@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { HttpError } from '../lib/errors';
 import { logger } from '../lib/logger';
 import { noteAccountActive, upsertUser } from './accounts';
+import { pendingReason } from './accessRequests';
 
 /**
  * Operator authentication.
@@ -181,7 +182,14 @@ export async function changePassword(current: string, next: string) {
 /** Returns the session subject on success ("user:<id>" for accounts, "operator" for the local password). */
 export async function authenticate(credentials: { email?: string; password: string }): Promise<string> {
   if (config.auth.provider === 'supabase') {
-    const identity = await authenticateWithSupabase(credentials.email ?? '', credentials.password);
+    let identity: Awaited<ReturnType<typeof authenticateWithSupabase>>;
+    try {
+      identity = await authenticateWithSupabase(credentials.email ?? '', credentials.password);
+    } catch (err) {
+      // Asked for access and not approved yet: say so, instead of "email not confirmed".
+      const reason = err instanceof HttpError && err.code === 'EMAIL_NOT_CONFIRMED' ? await pendingReason(credentials.email ?? '') : null;
+      throw reason ? new HttpError(403, reason, 'PENDING') : err;
+    }
     noteAccountActive(identity.authId);
     const user = await upsertUser(identity);
     return `user:${user.id}`;
@@ -213,7 +221,7 @@ async function authenticateWithSupabase(email: string, password: string): Promis
   if (!res.ok) {
     const body: any = await res.json().catch(() => ({}));
     if (/not confirmed/i.test(String(body?.msg ?? body?.error_description ?? ''))) {
-      throw new HttpError(401, 'This account’s email isn’t confirmed yet. Ask your administrator to confirm it in Supabase.');
+      throw new HttpError(401, 'This account’s email isn’t confirmed yet. Ask your administrator to confirm it in Supabase.', 'EMAIL_NOT_CONFIRMED');
     }
     throw new HttpError(401, 'Incorrect email or password.');
   }

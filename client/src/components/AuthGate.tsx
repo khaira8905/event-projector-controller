@@ -13,9 +13,11 @@ import type { AuthStatus } from '../types';
 interface AuthContextValue {
   status: AuthStatus | null;
   signOut: () => Promise<void>;
+  /** Re-reads the sign-in status (e.g. after approving someone: the waiting count). */
+  refresh: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue>({ status: null, signOut: async () => {} });
+const AuthContext = createContext<AuthContextValue>({ status: null, signOut: async () => {}, refresh: async () => {} });
 export const useAuth = () => useContext(AuthContext);
 
 /**
@@ -27,6 +29,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const firstLoad = useRef(true);
+  const [demoEnded, setDemoEnded] = useState(false);
+  const statusRef = useRef<AuthStatus | null>(null);
   const load = useCallback(async () => {
     try {
       // Back from "Continue with Google": this tab has just signed in.
@@ -39,6 +43,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         next = await api.authStatus();
       }
       if (next.enabled && !next.authenticated) clearTabSignedIn();
+      // A demo that just ran out: the sign-in page says so and offers Request access.
+      if (next.authenticated) setDemoEnded(false);
+      else if (statusRef.current?.account?.demoEndsAt) setDemoEnded(true);
+      statusRef.current = next;
       setStatus(next);
       setError(null);
     } catch (err) {
@@ -79,6 +87,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', check);
     };
   }, [signedIn, load]);
+
+  // A demo ends on the minute: show the sign-in page (with Request access) right then.
+  const demoEndsAt = status?.account?.demoEndsAt;
+  useEffect(() => {
+    if (!demoEndsAt) return;
+    const t = window.setTimeout(() => void load(), Math.max(0, demoEndsAt - Date.now()) + 1500);
+    return () => window.clearTimeout(t);
+  }, [demoEndsAt, load]);
 
   const signOut = useCallback(async () => {
     clearTabSignedIn();
@@ -134,9 +150,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <Pending label={demoStarting || pathname === '/demo' ? 'Setting up your demo…' : 'Opening EventControl…'} />
       </Centered>
     );
-  if (!status.authenticated) return <SignIn status={status} onDone={load} onDemo={startDemo} initialError={demoError} />;
+  if (!status.authenticated) return <SignIn status={status} onDone={load} onDemo={startDemo} initialError={demoError} demoEnded={demoEnded} />;
   return (
-    <AuthContext.Provider value={{ status, signOut }}>
+    <AuthContext.Provider value={{ status, signOut, refresh: load }}>
       {status.account && <AccountSync key={status.account.email} />}
       {children}
       {status.account?.demoEndsAt && <DemoBanner endsAt={status.account.demoEndsAt} onEnd={signOut} />}
@@ -153,11 +169,33 @@ function SignIn({
   onDone,
   onDemo,
   initialError,
+  demoEnded,
 }: {
   status: AuthStatus;
   onDone: () => Promise<void>;
   onDemo: () => Promise<void>;
   initialError: string | null;
+  demoEnded: boolean;
+}) {
+  const [asking, setAsking] = useState(false);
+  if (asking && status.access) return <RequestAccess verify={status.access.verify} onBack={() => setAsking(false)} />;
+  return <SignInForm status={status} onDone={onDone} onDemo={onDemo} initialError={initialError} demoEnded={demoEnded} onAsk={status.access ? () => setAsking(true) : undefined} />;
+}
+
+function SignInForm({
+  status,
+  onDone,
+  onDemo,
+  initialError,
+  demoEnded,
+  onAsk,
+}: {
+  status: AuthStatus;
+  onDone: () => Promise<void>;
+  onDemo: () => Promise<void>;
+  initialError: string | null;
+  demoEnded: boolean;
+  onAsk?: () => void;
 }) {
   const setup = status.provider === 'local' && !status.configured;
   const supabase = status.provider === 'supabase';
@@ -204,12 +242,18 @@ function SignIn({
           <BrandMark />
           <KeyRound size={18} className="text-slate-500" />
         </div>
+        {demoEnded && (
+          <div className="mb-5 rounded-md border border-[var(--line-strong)] bg-[var(--surface-2,transparent)] px-3.5 py-3 text-[13px] text-slate-300">
+            <p className="font-semibold text-white">Your demo has ended.</p>
+            <p className="mt-0.5">{onAsk ? 'Liked it? Request access to get your own account, or start another demo.' : 'Start another demo any time.'}</p>
+          </div>
+        )}
         <h1 className="t-page">{setup ? 'Create the operator password' : 'Sign in'}</h1>
         <p className="t-support mt-1.5 mb-5">
           {setup
             ? 'This stops other people on the same Wi-Fi from controlling your projector. You will use it every time you open the dashboard.'
             : supabase
-              ? 'Use the email and password you were given. Your events and settings are private to your account.'
+              ? 'Sign in with your email and password. Your events and settings are private to your account.'
               : 'Sign in to control the display.'}
         </p>
         <div className="grid gap-3">
@@ -240,7 +284,18 @@ function SignIn({
               </a>
             </>
           )}
-          {supabase && <p className="t-support">No account yet, or forgot your password? Ask your EventControl administrator.</p>}
+          {supabase &&
+            (onAsk ? (
+              <p className="t-support">
+                No account yet?{' '}
+                <button type="button" onClick={onAsk} className="font-semibold text-[var(--accent-500)] hover:underline">
+                  Request access
+                </button>
+                . Forgot your password? Ask your EventControl administrator.
+              </p>
+            ) : (
+              <p className="t-support">No account yet, or forgot your password? Ask your EventControl administrator.</p>
+            ))}
           {!setup && status.demo && (
             <div className="mt-2 border-t ec-line pt-4">
               <Button
@@ -262,7 +317,9 @@ function SignIn({
               >
                 Try the demo
               </Button>
-              <p className="t-support mt-2 text-center">No account needed: your own private copy of a sample event, deleted after a few hours.</p>
+              <p className="t-support mt-2 text-center">
+                No account needed: your own private copy of a sample event for {status.demoMinutes ?? 10} minutes.
+              </p>
             </div>
           )}
           {!setup && status.provider === 'local' && (
@@ -277,25 +334,174 @@ function SignIn({
 }
 
 /**
+ * "Request access": name, email and a password of their choice → (when email is set up) a
+ * 6-digit code sent to that email → waiting for the administrator's approval.
+ */
+function RequestAccess({ verify, onBack }: { verify: boolean; onBack: () => void }) {
+  const [step, setStep] = useState<'form' | 'code' | 'done'>('form');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Request access · EventControl';
+  }, []);
+
+  const run = async (fn: () => Promise<void>) => {
+    setError(null);
+    setNote(null);
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) return setError('Use at least 8 characters for the password.');
+    if (password !== confirm) return setError('The passwords do not match.');
+    void run(async () => {
+      const res = await api.requestAccess({ name, email, password });
+      setStep(res.verify ? 'code' : 'done');
+    });
+  };
+  const submitCode = (e: FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      await api.verifyAccess(email, code);
+      setStep('done');
+    });
+  };
+
+  return (
+    <Centered>
+      <div className="ec-card ec-modal-in w-full max-w-sm rounded-lg p-6 text-left">
+        <div className="mb-5 flex items-center justify-between">
+          <BrandMark />
+          <KeyRound size={18} className="text-slate-500" />
+        </div>
+        {step === 'form' && (
+          <form onSubmit={submit}>
+            <h1 className="t-page">Request access</h1>
+            <p className="t-support mt-1.5 mb-5">
+              Choose the email and password you’ll sign in with.{verify ? ' We’ll email you a code to confirm the address.' : ''} The administrator approves each
+              account.
+            </p>
+            <div className="grid gap-3">
+              <Field label="Your name">
+                <TextInput value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoFocus required maxLength={80} />
+              </Field>
+              <Field label="Email">
+                <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+              </Field>
+              <Field label="Password (at least 8 characters)">
+                <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
+              </Field>
+              <Field label="Repeat password">
+                <TextInput type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
+              </Field>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+              <Button type="submit" variant="primary" size="lg" className="mt-1 h-11" disabled={busy}>
+                {busy ? 'Please wait…' : 'Request access'}
+              </Button>
+              <p className="t-support">Your password goes straight to the sign-in service: nobody, the administrator included, can see it.</p>
+            </div>
+          </form>
+        )}
+        {step === 'code' && (
+          <form onSubmit={submitCode}>
+            <h1 className="t-page">Check your email</h1>
+            <p className="t-support mt-1.5 mb-5">
+              We sent a 6-digit code to <span className="font-semibold text-slate-200">{email}</span>. It may take a minute, and can land in spam.
+            </p>
+            <div className="grid gap-3">
+              <Field label="Code">
+                <TextInput
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+                  className="t-num text-center text-[20px] tracking-[0.4em]"
+                />
+              </Field>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+              {note && <p className="text-sm text-emerald-400">{note}</p>}
+              <Button type="submit" variant="primary" size="lg" className="mt-1 h-11" disabled={busy || code.length !== 6}>
+                {busy ? 'Please wait…' : 'Confirm'}
+              </Button>
+              <button
+                type="button"
+                className="t-support text-left hover:underline"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.resendAccessCode(email);
+                    setNote('A new code is on its way.');
+                  })
+                }
+              >
+                Didn’t get it? Send a new code
+              </button>
+            </div>
+          </form>
+        )}
+        {step === 'done' && (
+          <div>
+            <h1 className="t-page">Request sent</h1>
+            <p className="t-support mt-1.5 mb-5">
+              The administrator will review it. {verify ? 'You’ll get an email when it’s approved; then' : 'Once it’s approved,'} sign in with{' '}
+              <span className="font-semibold text-slate-200">{email}</span> and the password you chose.
+            </p>
+          </div>
+        )}
+        <Button size="sm" variant="ghost" className="mt-4" onClick={onBack}>
+          ← Back to sign in
+        </Button>
+      </div>
+    </Centered>
+  );
+}
+
+/**
  * On arrival, a short note that this is a temporary demo and how long it lasts. It steps
  * aside by itself after a few seconds so it never covers the console; the account corner of
  * the rail keeps saying "Demo".
  */
 function DemoBanner({ endsAt, onEnd }: { endsAt: number; onEnd: () => void }) {
   const [hidden, setHidden] = useState(false);
+  const [lastMinute, setLastMinute] = useState(false);
   useEffect(() => {
-    const t = window.setTimeout(() => setHidden(true), 12_000);
-    return () => window.clearTimeout(t);
-  }, []);
+    const hide = window.setTimeout(() => setHidden(true), 12_000);
+    // Back once more with a minute to go, so the end isn't a surprise.
+    const warn = window.setTimeout(() => {
+      setLastMinute(true);
+      setHidden(false);
+    }, Math.max(0, endsAt - Date.now() - 60_000));
+    return () => {
+      window.clearTimeout(hide);
+      window.clearTimeout(warn);
+    };
+  }, [endsAt]);
   if (hidden) return null;
-  const minutes = Math.max(0, Math.round((endsAt - Date.now()) / 60_000));
+  const minutes = lastMinute ? 1 : Math.max(0, Math.round((endsAt - Date.now()) / 60_000));
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   const left = h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
   return (
     <div role="status" className="ec-card ec-modal-in fixed bottom-4 left-1/2 z-40 flex w-[min(34rem,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-md py-2 pr-2 pl-3.5 text-[13px] shadow-lg">
       <span className="ec-label shrink-0 text-[var(--accent-500)]">Demo</span>
-      <span className="min-w-0 flex-1 text-slate-300">Your private copy: try anything. It’s deleted in {left}.</span>
+      <span className="min-w-0 flex-1 text-slate-300">{lastMinute ? 'One minute left in your demo.' : `Your private copy: try anything. It’s deleted in ${left}.`}</span>
       <Button size="sm" variant="ghost" className="shrink-0" onClick={onEnd}>
         End demo
       </Button>

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { PeopleModal } from '../PeopleModal';
 
 /** Signed in with an account: "this computer" settings are saved to the account instead. */
 const SyncedCtx = createContext(false);
@@ -57,7 +58,7 @@ interface SettingsViewProps {
   /** No password: anyone with the link can open the console. */
   openAccess: boolean;
   /** The signed-in account (accounts mode). */
-  account: { email: string; name: string; plan: string } | null;
+  account: { email: string; name: string; plan: string; admin?: boolean; pendingRequests?: number } | null;
   signedIn: boolean;
   displayUrl: string;
   consoleUrl: string;
@@ -653,6 +654,7 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
               Sign out
             </Button>
           </div>
+          {account.admin && <PeopleRow waiting={account.pendingRequests ?? 0} />}
         </Block>
       )}
       <Block id="details" title="Details" scope="event">
@@ -693,6 +695,19 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
         )}
       </Block>
     </>
+  );
+}
+
+/** Administrator only: requests to approve, and everyone with an account. */
+function PeopleRow({ waiting }: { waiting: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Row label="People" hint={waiting ? `${waiting} ${waiting === 1 ? 'person is' : 'people are'} asking for access.` : 'Approve requests for access, and remove people.'}>
+      <Button size="sm" variant={waiting ? 'primary' : 'secondary'} icon={<Users size={13} />} onClick={() => setOpen(true)}>
+        {waiting ? `Review ${waiting}` : 'Manage'}
+      </Button>
+      <PeopleModal open={open} onClose={() => setOpen(false)} />
+    </Row>
   );
 }
 

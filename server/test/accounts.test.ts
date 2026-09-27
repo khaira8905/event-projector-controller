@@ -22,6 +22,10 @@ const USERS: Record<string, { id: string; password: string; name: string }> = {
 };
 /** Accounts the administrator deleted in Supabase. */
 const removed = new Set<string>();
+/** Logins created through Request access (admin API): locked until confirmed. */
+const created = new Map<string, { id: string; email: string; password: string; name: string; confirmed: boolean }>();
+/** Emails "sent" through the fake Brevo. */
+const mailbox: { to: string; subject: string; text: string }[] = [];
 let supabaseDown = false;
 
 const app = createApp();
@@ -39,14 +43,39 @@ beforeAll(async () => {
       res.end(JSON.stringify(data));
     };
     if (req.url === '/auth/v1/health' && req.headers.apikey === 'anon-key') return json(200, { name: 'GoTrue' });
+    if (req.url === '/brevo' && req.headers['api-key'] === 'brevo-key') {
+      const m = JSON.parse(body);
+      mailbox.push({ to: m.to[0].email, subject: m.subject, text: m.textContent });
+      return json(201, { messageId: 'x' });
+    }
+    if (req.url === '/auth/v1/admin/users' && req.method === 'POST' && req.headers.apikey === 'sb_secret_test') {
+      const { email, password, email_confirm, user_metadata } = JSON.parse(body);
+      if (USERS[email] || [...created.values()].some((c) => c.email === email)) return json(422, { msg: 'A user with this email address has already been registered', error_code: 'email_exists' });
+      const id = `uuid-new-${created.size + 1}`;
+      created.set(id, { id, email, password, name: user_metadata?.full_name ?? '', confirmed: !!email_confirm });
+      return json(200, { id, email });
+    }
     const admin = req.url?.match(/^\/auth\/v1\/admin\/users\/([^/?]+)$/);
-    if (admin && req.method === 'GET' && req.headers.apikey === 'sb_secret_test') {
+    if (admin && req.headers.apikey === 'sb_secret_test') {
       if (supabaseDown) return json(503, {});
-      const u = Object.values(USERS).find((x) => x.id === admin[1]);
+      const c = created.get(admin[1]);
+      if (req.method === 'PUT') {
+        if (!c) return json(404, { msg: 'User not found' });
+        c.confirmed = !!JSON.parse(body).email_confirm;
+        return json(200, { id: c.id });
+      }
+      if (req.method === 'DELETE') return created.delete(admin[1]) ? json(200, {}) : json(404, { msg: 'User not found' });
+      const u = c ?? Object.values(USERS).find((x) => x.id === admin[1]);
       return !u || removed.has(u.id) ? json(404, { msg: 'User not found' }) : json(200, { id: u.id, banned_until: null });
     }
     if (req.url?.startsWith('/auth/v1/token') && req.headers.apikey === 'anon-key') {
       const { email, password } = JSON.parse(body || '{}');
+      const c = [...created.values()].find((x) => x.email === email);
+      if (c && c.password === password) {
+        return c.confirmed
+          ? json(200, { access_token: 'x', user: { id: c.id, email, user_metadata: { full_name: c.name } } })
+          : json(400, { error_code: 'email_not_confirmed', msg: 'Email not confirmed' });
+      }
       const u = USERS[email] && !removed.has(USERS[email].id) ? USERS[email] : undefined;
       if (email === 'pending@example.com') return json(400, { error: 'invalid_grant', error_description: 'Email not confirmed' });
       if (!u || u.password !== password) return json(400, { error: 'invalid_grant', error_description: 'Invalid login credentials' });
@@ -59,6 +88,7 @@ beforeAll(async () => {
   config.supabase.url = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
   config.supabase.anonKey = 'anon-key';
   config.demo.enabled = true;
+  config.access.enabled = true;
 
   server = http.createServer(app);
   createSocketServer(server);
@@ -189,7 +219,7 @@ describe('accounts', () => {
     expect((await alice.agent.get('/api/events')).status).toBe(200);
   });
 
-  it('lets visitors try a private demo that is deleted after a few hours', async () => {
+  it('lets visitors try a private demo that is deleted after 10 minutes', async () => {
     expect((await request(app).get('/api/auth/status')).body.demo).toBe(true);
     const guest = request.agent(app);
     const started = await guest.post('/api/auth/demo');
@@ -199,7 +229,8 @@ describe('accounts', () => {
     // Their own copy of the demo show — and nobody else's events.
     const status = (await guest.get('/api/auth/status')).body;
     expect(status).toMatchObject({ authenticated: true, account: { plan: 'demo', name: 'Demo guest' } });
-    expect(status.account.demoEndsAt).toBeGreaterThan(Date.now() + 2.9 * 3600_000);
+    expect(status.account.demoEndsAt).toBeGreaterThan(Date.now() + 9 * 60_000);
+    expect(status.account.demoEndsAt).toBeLessThan(Date.now() + 11 * 60_000);
     const events = (await guest.get('/api/events')).body;
     expect(events.map((e: any) => e.id)).toEqual([eventId]);
     expect((await guest.get(`/api/events/${eventId}/queue`)).body.length).toBeGreaterThan(5);
@@ -219,7 +250,7 @@ describe('accounts', () => {
     expect(over.body.error).toMatch(/demo/i);
 
     // Time's up: signed out, then everything is deleted.
-    vi.setSystemTime(Date.now() + 3.1 * 3600_000);
+    vi.setSystemTime(Date.now() + 11 * 60_000);
     expect((await guest.get('/api/events')).status).toBe(401);
     await removeExpiredDemos();
     expect(await prisma.event.count({ where: { id: { in: [eventId, otherEvent] } } })).toBe(0);
@@ -228,11 +259,64 @@ describe('accounts', () => {
   });
 
   it('limits how many demos one visitor can start', async () => {
+    vi.setSystemTime(Date.now() + 61 * 60_000); // a new hour for this visitor
     const results = [];
     for (let i = 0; i < 6; i++) results.push((await request(app).post('/api/auth/demo')).status);
     expect(results).toEqual([201, 201, 201, 201, 201, 429]);
     await prisma.user.updateMany({ where: { plan: 'demo' }, data: { createdAt: new Date(0) } });
     await removeExpiredDemos();
+  });
+
+  it('lets people ask for access: email code, then the administrator approves or removes them', async () => {
+    config.email.brevoApiKey = 'brevo-key';
+    config.email.from = 'noreply@example.com';
+    config.email.apiUrl = `${config.supabase.url}/brevo`;
+    const codeFor = (to: string) => mailbox.filter((m) => m.to === to).at(-1)?.text.match(/\b(\d{6})\b/)?.[1];
+
+    expect((await request(app).get('/api/auth/status')).body.access).toEqual({ verify: true });
+    const ask = await request(app).post('/api/auth/request-access').send({ name: 'Dave', email: 'Dave@Example.com', password: 'dave-pass-1' });
+    expect(ask.status).toBe(201);
+    expect(ask.body).toEqual({ verify: true });
+    // Locked until the email is confirmed and the administrator approves.
+    const early = await request(app).post('/api/auth/login').send({ email: 'dave@example.com', password: 'dave-pass-1' });
+    expect(early.status).toBe(403);
+    expect(early.body.error).toMatch(/code/);
+    expect((await request(app).post('/api/auth/request-access/verify').send({ email: 'dave@example.com', code: '000000' === codeFor('dave@example.com') ? '111111' : '000000' })).status).toBe(400);
+    expect((await request(app).post('/api/auth/request-access/verify').send({ email: 'dave@example.com', code: codeFor('dave@example.com') })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 200)); // the note to the administrator is sent in the background
+    expect(mailbox.some((m) => m.to === 'alice@example.com' && /Dave/.test(m.subject))).toBe(true);
+    const waiting = await request(app).post('/api/auth/login').send({ email: 'dave@example.com', password: 'dave-pass-1' });
+    expect(waiting.status).toBe(403);
+    expect(waiting.body.error).toMatch(/approval/);
+
+    // Only the administrator (the first account) manages people.
+    expect((await alice.agent.get('/api/auth/status')).body.account).toMatchObject({ admin: true, pendingRequests: 1 });
+    expect((await bob.agent.get('/api/admin/people')).status).toBe(403);
+    const people = (await alice.agent.get('/api/admin/people')).body;
+    const dave = people.find((p: any) => p.email === 'dave@example.com');
+    expect(dave).toMatchObject({ status: 'pending', emailVerified: true, name: 'Dave' });
+    expect((await bob.agent.post(`/api/admin/people/${dave.id}/approve`)).status).toBe(403);
+    expect((await alice.agent.post(`/api/admin/people/${dave.id}/approve`)).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(mailbox.at(-1)).toMatchObject({ to: 'dave@example.com', subject: expect.stringMatching(/sign in/i) });
+
+    const daveIn = await signIn('dave@example.com', 'dave-pass-1');
+    expect(daveIn.res.status).toBe(200);
+    expect((await daveIn.agent.get('/api/events')).body).toEqual([]);
+    // Asking again with an existing email is refused.
+    expect((await request(app).post('/api/auth/request-access').send({ name: 'D', email: 'dave@example.com', password: 'whatever-1' })).status).toBe(409);
+
+    // Removing someone ends their session and their login.
+    expect((await alice.agent.delete(`/api/admin/people/${dave.id}`)).status).toBe(204);
+    expect((await daveIn.agent.get('/api/events')).status).toBe(401);
+    expect((await signIn('dave@example.com', 'dave-pass-1')).res.status).toBe(401);
+    expect((await alice.agent.delete(`/api/admin/people/${(await prisma.user.findFirst({ where: { email: 'alice@example.com' } }))!.id}`)).status).toBe(400);
+
+    // At most 5 new requests an hour, from everyone together.
+    const statuses = [];
+    for (let i = 0; i < 6; i++) statuses.push((await request(app).post('/api/auth/request-access').send({ name: `P${i}`, email: `p${i}@example.com`, password: 'password-1' })).status);
+    expect(statuses).toEqual([201, 201, 201, 201, 201, 429]);
+    config.email.brevoApiKey = '';
   });
 
   it('answers the daily keep-alive without signing in, touching the database and Supabase', async () => {

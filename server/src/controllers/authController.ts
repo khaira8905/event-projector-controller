@@ -7,10 +7,21 @@ import { cookieOptions } from '../lib/network';
 import { userFromSubject } from '../services/accounts';
 import * as demoAccounts from '../services/demoAccounts';
 import { demoEnabled } from '../services/demoAccounts';
+import * as access from '../services/accessRequests';
+import { emailEnabled } from '../services/email';
 
 async function accountSummary(subject: string) {
   const u = await userFromSubject(subject);
-  return u ? { email: u.email, name: u.name, plan: u.plan, ...(u.demoEndsAt ? { demoEndsAt: u.demoEndsAt } : {}) } : null;
+  if (!u) return null;
+  const admin = await access.isAdmin(u);
+  return {
+    email: u.email,
+    name: u.name,
+    plan: u.plan,
+    ...(u.demoEndsAt ? { demoEndsAt: u.demoEndsAt } : {}),
+    // The administrator approves people who ask for access (Settings → Account & sharing).
+    ...(admin ? { admin: true, pendingRequests: await access.pendingCount() } : {}),
+  };
 }
 
 const passwordSchema = z.object({ password: z.string().min(1, 'Password is required').max(200) });
@@ -41,13 +52,16 @@ export async function status(req: Request, res: Response) {
     google: auth.authEnabled() && googleConfigured() && config.google.allowedEmails.length > 0,
     // "Try the demo" on the sign-in page.
     demo: demoEnabled(),
+    demoMinutes: config.demo.minutes,
+    // "Request access" on the sign-in page; verify: a code is emailed to confirm the address.
+    access: access.accessEnabled() ? { verify: emailEnabled() } : null,
   });
 }
 
 /** "Try the demo": a fresh guest account with its own copy of the demo show. */
 export async function startDemo(req: Request, res: Response) {
   const { userId, eventId } = await demoAccounts.startDemo(req.ip ?? 'unknown');
-  await startSession(req, res, `user:${userId}`, config.demo.hours);
+  await startSession(req, res, `user:${userId}`, config.demo.minutes / 60);
   res.status(201).json({ ok: true, eventId });
 }
 

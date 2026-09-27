@@ -33,3 +33,9 @@ services:
         value: supabase
       - key: SUPABASE_ANON_KEY     # Supabase → Project Settings → API Keys → Publishable key (or legacy anon)
         sync: false
+      # Optional: emails for "Request access" (the code that confirms someone's email, and notes
+      # to you and to them). Free Brevo account → SMTP & API → API keys. See docs/DEPLOY.md Part D.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM            # the sender address you verified in Brevo
+        sync: false

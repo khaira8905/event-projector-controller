@@ -33,7 +33,7 @@ const toCurrent = (u: User): CurrentUser => ({
   email: u.email,
   name: u.name,
   plan: u.plan,
-  ...(u.plan === 'demo' ? { demoEndsAt: u.createdAt.getTime() + config.demo.hours * 3600_000 } : {}),
+  ...(u.plan === 'demo' ? { demoEndsAt: u.createdAt.getTime() + config.demo.minutes * 60_000 } : {}),
 });
 
 /** Throws 404 (not 403: don't reveal that it exists) unless the current user owns the event. */
@@ -58,7 +58,8 @@ export async function upsertUser(input: { authId: string; email: string; name?: 
   const email = input.email.trim().toLowerCase();
   const existing = (await prisma.user.findUnique({ where: { authId: input.authId } })) ?? (await prisma.user.findUnique({ where: { email } }));
   const user = existing
-    ? await prisma.user.update({ where: { id: existing.id }, data: { authId: input.authId, email, name: input.name || existing.name, lastLoginAt: new Date() } })
+    ? // Signing in proves the login is unlocked (approved here, or confirmed in Supabase directly).
+      await prisma.user.update({ where: { id: existing.id }, data: { authId: input.authId, email, name: input.name || existing.name, status: 'active', lastLoginAt: new Date() } })
     : await prisma.user.create({ data: { authId: input.authId, email, name: input.name ?? '', lastLoginAt: new Date() } });
   if (!existing) logger.info(`New account: ${email}`);
   await claimLegacyEvents(user);
@@ -68,7 +69,7 @@ export async function upsertUser(input: { authId: string; email: string; name?: 
 async function claimLegacyEvents(user: User) {
   const admin = config.auth.adminEmail;
   // Demo guests don't count: the first real account gets them.
-  const eligible = admin ? user.email === admin : (await prisma.user.count({ where: { plan: { not: 'demo' } } })) === 1;
+  const eligible = admin ? user.email === admin : (await prisma.user.count({ where: { plan: { not: 'demo' }, status: 'active' } })) === 1;
   if (!eligible) return;
   const { count } = await prisma.event.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } });
   if (count) logger.info(`${user.email} now owns ${count} event(s) created before accounts.`);
@@ -81,7 +82,7 @@ async function claimLegacyEvents(user: User) {
 export async function userFromSubject(subject: string): Promise<CurrentUser | null> {
   if (subject.startsWith('user:')) {
     const user = await prisma.user.findUnique({ where: { id: subject.slice(5) } });
-    if (!user || !(await accountStillActive(user.authId))) return null;
+    if (!user || user.status !== 'active' || !(await accountStillActive(user.authId))) return null;
     const current = toCurrent(user);
     // A demo is over when its time is up, even before the clean-up has deleted it.
     return current.demoEndsAt && current.demoEndsAt < Date.now() ? null : current;

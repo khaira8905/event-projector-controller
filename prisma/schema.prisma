@@ -22,6 +22,15 @@ model User {
   preferences String    @default("{}")
   // Subscription tier, for later: "free" today.
   plan        String    @default("free")
+  // "active" can sign in. "pending": asked for access on the sign-in page, waiting for the
+  // administrator's approval (their Supabase login stays locked until then).
+  status      String    @default("active")
+  // Proved they own the email (code sent to it when asking for access).
+  emailVerified  Boolean   @default(false)
+  requestedAt    DateTime?
+  verifyCodeHash String?
+  verifyExpires  DateTime?
+  verifyAttempts Int       @default(0)
   createdAt   DateTime  @default(now())
   lastLoginAt DateTime?
 

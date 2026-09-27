@@ -11,13 +11,13 @@ import { removeEvent } from './eventRemoval';
  * "Try the demo": a visitor gets a temporary guest account with its own copy of the demo
  * show, private like any account. Guests can do everything an operator can on a small
  * budget, except connect outside services. Guest accounts and everything in them are
- * deleted after DEMO_HOURS.
+ * deleted after DEMO_MINUTES.
  */
 export const DEMO_PLAN = 'demo';
 
 export const demoEnabled = () => config.auth.provider !== 'none' && config.demo.enabled;
 export const isDemo = (user = currentUser()) => user?.plan === DEMO_PLAN;
-export const demoEndsAt = (createdAt: Date) => createdAt.getTime() + config.demo.hours * 3600_000;
+export const demoEndsAt = (createdAt: Date) => createdAt.getTime() + config.demo.minutes * 60_000;
 
 const startsByIp = new Map<string, number[]>();
 
@@ -36,7 +36,8 @@ export async function startDemo(ip: string): Promise<{ userId: string; eventId: 
 
   const id = crypto.randomBytes(6).toString('hex');
   const user = await prisma.user.create({
-    data: { authId: `demo:${id}`, email: `guest-${id}@demo.eventcontrol`, name: 'Demo guest', plan: DEMO_PLAN, lastLoginAt: new Date() },
+    // createdAt from this server's clock: the demo's end is counted from it.
+    data: { authId: `demo:${id}`, email: `guest-${id}@demo.eventcontrol`, name: 'Demo guest', plan: DEMO_PLAN, createdAt: new Date(), lastLoginAt: new Date() },
   });
   try {
     const eventId = await createDemoEvent(user.id);
@@ -81,7 +82,7 @@ async function removeDemo(userId: string) {
 }
 
 export async function removeExpiredDemos() {
-  const cutoff = new Date(Date.now() - config.demo.hours * 3600_000);
+  const cutoff = new Date(Date.now() - config.demo.minutes * 60_000);
   const expired = await prisma.user.findMany({ where: { plan: DEMO_PLAN, createdAt: { lt: cutoff } }, select: { id: true } });
   for (const u of expired) {
     try {
@@ -96,5 +97,5 @@ export async function removeExpiredDemos() {
 export function scheduleDemoCleanup() {
   const run = () => void removeExpiredDemos().catch((err) => logger.warn('Demo clean-up failed:', err));
   run();
-  setInterval(run, 10 * 60_000).unref();
+  setInterval(run, 2 * 60_000).unref();
 }

@@ -82,15 +82,41 @@ sign-in ends after 24 hours (change it with `SESSION_HOURS` in Render).
 
 **Public demo.** The sign-in page also offers **Try the demo**, and
 `https://<your-site>/demo` opens one straight away: the link to put on LinkedIn or GitHub.
-Each visitor gets a temporary guest account with a private copy of the sample event. It can't
-see anyone else's events, has small limits (5 events, 25 files, 25 MB per upload, no Google
-Drive), and is deleted after 3 hours. Set `DEMO=off` in Render to turn it off.
+Each visitor gets a temporary guest account with a private copy of the sample event for
+**10 minutes** (`DEMO_MINUTES`). It can't see anyone else's events, has small limits (5 events,
+25 files, 25 MB per upload, no Google Drive), and is deleted when time is up. When it ends, the
+sign-in page offers **Request access**. Set `DEMO=off` in Render to turn the demo off.
 
-**Removing someone:** delete their user in Supabase → Authentication → Users. They can't sign
+**Request access.** People can ask for an account on the sign-in page: name, email and a
+password they choose (it goes straight to Supabase, and nobody can see it, you included). With
+email set up (Part D) they confirm the email with a 6-digit code. You get an email, and the
+**People** button (Events page, or Settings → Account & sharing) lists the request:
+**Approve** unlocks their login and emails them; **Decline** deletes it. At most 5 new
+requests an hour (`ACCESS_REQUESTS_PER_HOUR`); `ACCESS_REQUESTS=off` hides the option. You're
+the administrator because you signed in first (or set `ADMIN_EMAIL`).
+
+**Removing someone:** **People → Remove** (or delete their user in Supabase → Authentication → Users). They can't sign
 in again, and if they're signed in right now they're signed out within about 2 minutes (the
 server checks with Supabase using `SUPABASE_SERVICE_ROLE_KEY`). Their events stay in the
 database; re-creating a user with the same email gives them back. To reset a password, open the
 user there → *Send password recovery* or set a new password.
+
+---
+
+## Part D — Emails for Request access (optional, free)
+
+Without this, Request access still works, but emails aren't checked and nobody gets notified:
+open **People** now and then to see requests.
+
+1. Create a free account at **https://www.brevo.com** (300 emails a day).
+2. **Senders, domains & dedicated IPs → Senders → Add a sender**: your email (e.g. your Gmail).
+   Brevo emails you a link to confirm it.
+3. **SMTP & API → API keys → Generate a new API key**. Copy it.
+4. Render → eventcontrol → **Environment**: `BREVO_API_KEY` = that key, `EMAIL_FROM` = the
+   sender email from step 2 → *Save changes*.
+
+Emails sent from a Gmail address through Brevo can land in spam at first; the code screen
+tells people to check there.
 
 ---
 

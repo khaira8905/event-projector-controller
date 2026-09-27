@@ -229,9 +229,27 @@ export interface AuthStatus {
   /** "Continue with Google" is available on the sign-in page. */
   google?: boolean;
   /** The signed-in account (accounts mode). demoEndsAt: a "Try the demo" guest, deleted then. */
-  account?: { email: string; name: string; plan: string; demoEndsAt?: number } | null;
-  /** "Try the demo" is offered on the sign-in page (and at /demo). */
+  account?: { email: string; name: string; plan: string; demoEndsAt?: number; admin?: boolean; pendingRequests?: number } | null;
+  /** "Try the demo" is offered on the sign-in page (and at /demo), lasting demoMinutes. */
   demo?: boolean;
+  demoMinutes?: number;
+  /** "Request access" on the sign-in page; verify: a code is emailed to confirm the address. */
+  access?: { verify: boolean } | null;
+}
+
+/** Someone with an account, or asking for one (administrator's People list). */
+export interface Person {
+  id: string;
+  email: string;
+  name: string;
+  status: 'active' | 'pending';
+  emailVerified: boolean;
+  /** Asked for access but hasn't entered the emailed code yet. */
+  awaitingCode: boolean;
+  requestedAt: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+  events: number;
 }
 
 export interface Account {

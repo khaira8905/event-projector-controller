@@ -1,4 +1,4 @@
-import type { Account, AuthStatus, DriveFile, EventInput, GoogleStatus, PreferencesPatch, EventSummary, Media, QueueItem, ScheduleItem, Screen, ScreenStyle, SystemStatus, UploadResult } from '../types';
+import type { Account, AuthStatus, Person, DriveFile, EventInput, GoogleStatus, PreferencesPatch, EventSummary, Media, QueueItem, ScheduleItem, Screen, ScreenStyle, SystemStatus, UploadResult } from '../types';
 
 export class ApiError extends Error {
   constructor(
@@ -49,6 +49,13 @@ export const api = {
   login: (password: string, email?: string) => request<{ ok: true }>('/api/auth/login', { method: 'POST', body: json({ password, email }) }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
   startDemo: () => request<{ ok: true; eventId: string }>('/api/auth/demo', { method: 'POST' }),
+  requestAccess: (input: { name: string; email: string; password: string }) =>
+    request<{ verify: boolean }>('/api/auth/request-access', { method: 'POST', body: json(input) }),
+  verifyAccess: (email: string, code: string) => request<{ ok: true }>('/api/auth/request-access/verify', { method: 'POST', body: json({ email, code }) }),
+  resendAccessCode: (email: string) => request<{ ok: true }>('/api/auth/request-access/resend', { method: 'POST', body: json({ email }) }),
+  listPeople: () => request<Person[]>('/api/admin/people'),
+  approvePerson: (id: string) => request<{ ok: true }>(`/api/admin/people/${id}/approve`, { method: 'POST' }),
+  removePerson: (id: string) => request<void>(`/api/admin/people/${id}`, { method: 'DELETE' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<{ ok: true }>('/api/auth/change-password', { method: 'POST', body: json({ currentPassword, newPassword }) }),
   status: () => request<SystemStatus>('/api/status'),

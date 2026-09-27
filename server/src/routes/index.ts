@@ -16,6 +16,7 @@ import * as auth from '../controllers/authController';
 import * as screens from '../controllers/screensController';
 import * as status from '../controllers/statusController';
 import * as account from '../controllers/accountController';
+import * as access from '../controllers/accessController';
 import { requireAuth } from '../middleware/requireAuth';
 import { assertNotDemo, checkDemoUpload } from '../services/demoAccounts';
 
@@ -69,6 +70,12 @@ apiRouter.post('/auth/setup', auth.setup);
 apiRouter.post('/auth/login', auth.login);
 apiRouter.post('/auth/logout', auth.logout);
 apiRouter.post('/auth/demo', auth.startDemo);
+apiRouter.post('/auth/request-access', access.request);
+apiRouter.post('/auth/request-access/verify', access.verify);
+apiRouter.post('/auth/request-access/resend', access.resend);
+apiRouter.get('/admin/people', access.listPeople);
+apiRouter.post('/admin/people/:id/approve', access.approve);
+apiRouter.delete('/admin/people/:id', access.remove);
 apiRouter.post('/auth/change-password', auth.changePassword);
 // Google: one callback for both "connect Drive" and "sign in with Google" (public, verified by signed state).
 apiRouter.get('/auth/google/start', googleCtl.signInStart);

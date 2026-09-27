@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Film, ListVideo, MapPin, MonitorPlay, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Film, ListVideo, MapPin, MonitorPlay, MoreHorizontal, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { useAuth } from '../components/AuthGate';
+import { PeopleModal } from '../components/PeopleModal';
 import { BrandMark } from '../components/BrandMark';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { EventFormModal } from '../components/EventFormModal';
@@ -20,6 +22,8 @@ export default function EventsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<EventSummary | null>(null);
   const [deleting, setDeleting] = useState<EventSummary | null>(null);
+  const account = useAuth().status?.account;
+  const [peopleOpen, setPeopleOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +62,14 @@ export default function EventsPage() {
           <BrandMark />
           <div className="flex items-center gap-1.5">
           <ThemeSwitcher />
+          {account?.admin && (
+            <Button variant="ghost" icon={<Users size={16} />} onClick={() => setPeopleOpen(true)} aria-label={`People${account.pendingRequests ? `, ${account.pendingRequests} waiting` : ''}`}>
+              People
+              {!!account.pendingRequests && (
+                <span className="ml-1 rounded-full bg-[var(--accent-500)] px-1.5 text-[11px] leading-[18px] font-semibold text-[var(--on-accent)]">{account.pendingRequests}</span>
+              )}
+            </Button>
+          )}
           <Button
             variant="primary"
             icon={<Plus size={16} />}
@@ -72,6 +84,7 @@ export default function EventsPage() {
         </div>
       </header>
 
+      <PeopleModal open={peopleOpen} onClose={() => setPeopleOpen(false)} />
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="ec-panel-in mb-10">
           <h1 className="text-[32px] leading-tight font-bold tracking-[-0.02em] text-white">Events</h1>

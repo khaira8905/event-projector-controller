@@ -59,15 +59,31 @@ export const config = {
   },
 
   // "Try the demo" on the sign-in page (and /demo): temporary guest accounts with their own copy
-  // of the demo show, deleted after DEMO_HOURS. On by default when people sign in with accounts.
+  // of the demo show, deleted after DEMO_MINUTES. On by default when people sign in with accounts.
   demo: {
     enabled: process.env.DEMO ? process.env.DEMO === 'on' : authProvider(process.env.AUTH_PROVIDER) === 'supabase',
-    hours: Number(process.env.DEMO_HOURS ?? 3),
+    minutes: Number(process.env.DEMO_MINUTES ?? 10),
     maxActive: Number(process.env.DEMO_MAX_ACTIVE ?? 40),
     perIpPerHour: 5,
     maxEvents: 5,
     maxFiles: 25,
     maxUploadBytes: 25 * 1024 * 1024,
+  },
+
+  // "Request access" on the sign-in page (accounts mode): people ask for an account, prove their
+  // email with a code, and the administrator approves them in Settings.
+  access: {
+    enabled: process.env.ACCESS_REQUESTS ? process.env.ACCESS_REQUESTS === 'on' : authProvider(process.env.AUTH_PROVIDER) === 'supabase',
+    perHour: Number(process.env.ACCESS_REQUESTS_PER_HOUR ?? 5),
+  },
+
+  // Outgoing email (verification codes, "new request" and "you're approved" notes) through
+  // Brevo's free HTTP API. Without a key, requests still work but emails aren't verified.
+  email: {
+    brevoApiKey: process.env.BREVO_API_KEY ?? '',
+    from: (process.env.EMAIL_FROM ?? '').trim(),
+    fromName: process.env.EMAIL_FROM_NAME ?? 'EventControl',
+    apiUrl: process.env.BREVO_API_URL ?? 'https://api.brevo.com/v3/smtp/email',
   },
 
   // Cloud storage for uploaded files. Leave SUPABASE_URL empty to keep files local only.
