@@ -6,7 +6,7 @@ A presentation control console for events, seminars, conferences and classrooms.
 UPLOAD → ORGANIZE → PREVIEW → QUEUE (Show Flow) → CONTROL → DISPLAY
 ```
 
-**▶ Live demo: https://eventcontrol.onrender.com/demo**. No sign-up needed. You get your own private copy of a sample event to try everything, including the projector window (*Open display*). It lasts 10 minutes; if you like it, **Request access** on the sign-in page. The free server sleeps when unused, so the first visit can take about a minute.
+**▶ Live demo: https://eventcontrol.onrender.com/demo**. No sign-up needed. You get your own private copy of a sample event to try everything, including the projector window (*Open display*). It lasts 10 minutes; if you like it, **Request access** on the sign-in page. The free server sleeps when unused, so the first visit may take ~30–60 s to wake.
 
 ![Operator console, White theme](docs/screenshots/console.png)
 
@@ -380,7 +380,8 @@ All routes except sign-in, health and media file downloads require the operator 
 
 ## Security & reliability
 
-- **Access:** open by default — anyone with the link uses the console, without accounts (by request). Per-browser data (a connected Google account) is tied to a random HttpOnly browser cookie, so visitors never see each other's Drive. Actions on the server machine's desktop ("Open in PowerPoint") are refused for any request that didn't come from that machine, including through a tunnel or proxy. Security headers, CORS only for a configured UI origin, and a production log of failed and slow requests.
+- **Public hosted version (eventcontrol.onrender.com): locked down.** Everyone signs in; accounts exist only after the administrator approves a request (email verified with a code), and each account sees only its own events, files and projector. The public demo gives every visitor a **private, throwaway copy** of a sample event: nobody else can see or change it, it's capped (25 MB per upload, 25 files, 5 events, 5 demos per visitor an hour, no Google Drive) and deleted after 10 minutes, so a visitor always starts from a clean sample. Uploads for accounts are capped at 200 MB; code emails at 5 an hour per address; "Open in PowerPoint" is off. Removed accounts are signed out within about 2 minutes.
+- **Local install (default on your own computer):** open, for a crew on a trusted network — anyone with the link uses the console, without accounts (by request). Per-browser data (a connected Google account) is tied to a random HttpOnly browser cookie, so visitors never see each other's Drive. Actions on the server machine's desktop ("Open in PowerPoint") are refused for any request that didn't come from that machine, including through a tunnel or proxy. Security headers, CORS only for a configured UI origin, and a production log of failed and slow requests.
 - **Private mode (optional):** scrypt-hashed operator password (or Supabase Auth, or Google for allow-listed accounts), HMAC-signed HttpOnly `SameSite=Strict` session cookie, rate-limited sign-in, and a password change signs out other sessions. Operator REST routes and socket control require a session; displays are read-only.
 - **Uploads:** extension allowlist and **magic-byte check** (a renamed `.exe` is rejected), sanitized filenames, random temp names, size limits and SHA-256 duplicate detection.
 - **Google:** server-side authorization-code flow with a signed `state` bound to a short-lived nonce cookie (CSRF-safe), same-origin return paths only, read-only Drive scope, AES-256-GCM encrypted tokens, revoke on disconnect.

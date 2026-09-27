@@ -34,6 +34,7 @@ ENV NODE_ENV=production \
     PORT=10000 \
     TRUST_PROXY=1 \
     ALLOW_EXTERNAL_OPEN=false \
+    MAX_UPLOAD_MB=200 \
     UPLOADS_DIR=/app/uploads
 
 EXPOSE 10000
