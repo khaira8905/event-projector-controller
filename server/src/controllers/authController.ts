@@ -20,7 +20,7 @@ async function accountSummary(subject: string) {
     plan: u.plan,
     ...(u.demoEndsAt ? { demoEndsAt: u.demoEndsAt } : {}),
     // The administrator approves people who ask for access (Settings → Account & sharing).
-    ...(admin ? { admin: true, pendingRequests: await access.pendingCount() } : {}),
+    ...(admin ? await access.pendingCounts().then((c) => ({ admin: true, pendingRequests: c.ready, awaitingCode: c.awaitingCode })) : {}),
   };
 }
 
@@ -55,6 +55,8 @@ export async function status(req: Request, res: Response) {
     demoMinutes: config.demo.minutes,
     // "Request access" on the sign-in page; verify: a code is emailed to confirm the address.
     access: access.accessEnabled() ? { verify: emailEnabled() } : null,
+    // "Forgot your password?" on the sign-in page (needs email).
+    passwordReset: access.passwordResetEnabled(),
   });
 }
 

@@ -58,7 +58,7 @@ interface SettingsViewProps {
   /** No password: anyone with the link can open the console. */
   openAccess: boolean;
   /** The signed-in account (accounts mode). */
-  account: { email: string; name: string; plan: string; admin?: boolean; pendingRequests?: number } | null;
+  account: { email: string; name: string; plan: string; admin?: boolean; pendingRequests?: number; awaitingCode?: number } | null;
   signedIn: boolean;
   displayUrl: string;
   consoleUrl: string;
@@ -506,7 +506,7 @@ function ControlsSection() {
 
 // ── Files & integrations ───────────────────────────────────────────────────────
 
-function FilesSection({ media, google, openAccess, uploadProgress, onUpload, onManageFiles, onBrowseDrive, onDisconnectGoogle }: SettingsViewProps) {
+function FilesSection({ media, google, account, openAccess, uploadProgress, onUpload, onManageFiles, onBrowseDrive, onDisconnectGoogle }: SettingsViewProps) {
   const input = useRef<HTMLInputElement>(null);
   const returnHere = `${window.location.pathname}?view=settings&section=files`;
   const state: 'checking' | 'unconfigured' | 'connected' | 'disconnected' = !google ? 'checking' : !google.configured ? 'unconfigured' : google.connected && google.drive ? 'connected' : 'disconnected';
@@ -542,41 +542,43 @@ function FilesSection({ media, google, openAccess, uploadProgress, onUpload, onM
         </div>
       </Block>
 
-      <Block id="google-drive" title="Google Drive" note="Import PowerPoint, Google Slides and PDF files. Read-only: EventControl never changes your Drive.">
-        <div className="flex flex-wrap items-center gap-4 py-3">
-          <span className="ec-source-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px]">
-            <DriveIcon size={19} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <span className="ec-status-dot h-2 w-2 shrink-0 rounded-full" data-state={state} aria-hidden />
-              {state === 'checking' ? 'Checking…' : state === 'unconfigured' ? 'Not set up on this server' : state === 'connected' ? `Connected as ${google!.account?.email}` : 'Not connected'}
-            </p>
-            <p className="mt-0.5 text-[13px] text-slate-500">
-              {state === 'unconfigured'
-                ? 'The server owner adds a Google OAuth client once (README → Google Drive).'
-                : state === 'connected'
-                  ? 'Browse your Drive from Files, or from Add in the Flow.'
-                  : 'You’ll be sent to Google to allow read-only access, then brought back here.'}
-            </p>
+      {account?.plan !== 'demo' && (
+        <Block id="google-drive" title="Google Drive" note="Import PowerPoint, Google Slides and PDF files. Read-only: EventControl never changes your Drive.">
+          <div className="flex flex-wrap items-center gap-4 py-3">
+            <span className="ec-source-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px]">
+              <DriveIcon size={19} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-medium text-slate-200">
+                <span className="ec-status-dot h-2 w-2 shrink-0 rounded-full" data-state={state} aria-hidden />
+                {state === 'checking' ? 'Checking…' : state === 'unconfigured' ? 'Not set up on this server' : state === 'connected' ? `Connected as ${google!.account?.email}` : 'Not connected'}
+              </p>
+              <p className="mt-0.5 text-[13px] text-slate-500">
+                {state === 'unconfigured'
+                  ? 'The server owner adds a Google OAuth client once (README → Google Drive).'
+                  : state === 'connected'
+                    ? 'Browse your Drive from Files, or from Add in the Flow.'
+                    : 'You’ll be sent to Google to allow read-only access, then brought back here.'}
+              </p>
+            </div>
+            {state === 'checking' ? (
+              <Loader2 size={16} className="animate-spin text-slate-500" />
+            ) : state === 'unconfigured' ? (
+              <a href="https://github.com/khaira8905/event-projector-controller#google-drive" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-sky-300 hover:underline">
+                How to set up <ExternalLink size={13} />
+              </a>
+            ) : state === 'connected' ? (
+              <Button size="sm" variant="primary" onClick={onBrowseDrive}>
+                Browse Drive
+              </Button>
+            ) : (
+              <a href={api.googleConnectUrl(returnHere)} className="ec-btn ec-btn-primary inline-flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-[13px] font-semibold">
+                <Link2 size={14} /> Connect Google Drive
+              </a>
+            )}
           </div>
-          {state === 'checking' ? (
-            <Loader2 size={16} className="animate-spin text-slate-500" />
-          ) : state === 'unconfigured' ? (
-            <a href="https://github.com/khaira8905/event-projector-controller#google-drive" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-sky-300 hover:underline">
-              How to set up <ExternalLink size={13} />
-            </a>
-          ) : state === 'connected' ? (
-            <Button size="sm" variant="primary" onClick={onBrowseDrive}>
-              Browse Drive
-            </Button>
-          ) : (
-            <a href={api.googleConnectUrl(returnHere)} className="ec-btn ec-btn-primary inline-flex h-8 items-center gap-1.5 rounded-[5px] px-3 text-[13px] font-semibold">
-              <Link2 size={14} /> Connect Google Drive
-            </a>
-          )}
-        </div>
-      </Block>
+        </Block>
+      )}
 
       <Block id="accounts" title="Accounts" note={openAccess ? 'Connections belong to this browser. Other people who open the shared link don’t see your Drive.' : 'Connections are shared by everyone signed in to this EventControl.'}>
         {google?.connected && google.account ? (
@@ -654,7 +656,7 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
               Sign out
             </Button>
           </div>
-          {account.admin && <PeopleRow waiting={account.pendingRequests ?? 0} />}
+          {account.admin && <PeopleRow waiting={account.pendingRequests ?? 0} awaitingCode={account.awaitingCode ?? 0} />}
         </Block>
       )}
       <Block id="details" title="Details" scope="event">
@@ -699,10 +701,11 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
 }
 
 /** Administrator only: requests to approve, and everyone with an account. */
-function PeopleRow({ waiting }: { waiting: number }) {
+function PeopleRow({ waiting, awaitingCode }: { waiting: number; awaitingCode: number }) {
   const [open, setOpen] = useState(false);
+  const summary = [waiting ? `${waiting} to approve` : '', awaitingCode ? `${awaitingCode} waiting for their email code` : ''].filter(Boolean).join(' · ');
   return (
-    <Row label="People" hint={waiting ? `${waiting} ${waiting === 1 ? 'person is' : 'people are'} asking for access.` : 'Approve requests for access, and remove people.'}>
+    <Row label="People" hint={summary ? `${summary}.` : 'Approve requests for access, and remove people.'}>
       <Button size="sm" variant={waiting ? 'primary' : 'secondary'} icon={<Users size={13} />} onClick={() => setOpen(true)}>
         {waiting ? `Review ${waiting}` : 'Manage'}
       </Button>

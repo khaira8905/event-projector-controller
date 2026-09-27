@@ -7,7 +7,7 @@ import { logger } from '../lib/logger';
 import type { CurrentUser } from './accounts';
 import { emailEnabled, sendEmail } from './email';
 import { removeEvent } from './eventRemoval';
-import { createLockedLogin, deleteLogin, unlockLogin } from './supabaseAdmin';
+import { createLockedLogin, deleteLogin, setLoginPassword, supabaseAdminEnabled, unlockLogin } from './supabaseAdmin';
 
 /**
  * "Request access": someone asks for an account on the sign-in page with their name, email
@@ -105,6 +105,59 @@ export async function pendingReason(email: string): Promise<string | null> {
   return 'Your request is waiting for the administrator’s approval. You’ll be able to sign in once it’s approved.';
 }
 
+// ---- Forgot password ---------------------------------------------------------------
+
+/** "Forgot your password?" works when accounts can be managed and codes can be emailed. */
+export const passwordResetEnabled = () => config.auth.provider === 'supabase' && emailEnabled() && supabaseAdminEnabled();
+
+const resetsByIp = new Map<string, number[]>();
+
+/**
+ * Emails a reset code if the address belongs to an account. The answer is the same either
+ * way, so the form can't be used to find out who has an account.
+ */
+export async function startPasswordReset(email: string, ip: string) {
+  if (!passwordResetEnabled()) throw new HttpError(404, 'Password reset isn’t available on this server. Ask your administrator.');
+  const now = Date.now();
+  const recent = (resetsByIp.get(ip) ?? []).filter((t) => now - t < 3600_000);
+  if (recent.length >= 5) throw new HttpError(429, 'Too many reset requests. Please try again in an hour.');
+  recent.push(now);
+  resetsByIp.set(ip, recent);
+
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  if (!user || user.status !== 'active' || user.plan === 'demo' || !supabaseId(user)) return;
+  // A code sent less than a minute ago stays valid: don't flood the inbox.
+  if (user.verifyExpires && user.verifyExpires.getTime() - CODE_MINUTES * 60_000 + RESEND_AFTER_MS > now) return;
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { verifyCodeHash: hashCode(user.id, code), verifyExpires: new Date(now + CODE_MINUTES * 60_000), verifyAttempts: 0 },
+  });
+  await sendEmail(
+    user.email,
+    `Your EventControl password reset code: ${code}`,
+    `Hi${user.name ? ` ${user.name}` : ''},\n\nYour code to choose a new EventControl password is:\n\n    ${code}\n\nIt works for ${CODE_MINUTES} minutes. If you didn't ask to reset your password, ignore this email: your password stays the same.`,
+  );
+}
+
+export async function finishPasswordReset(email: string, code: string, password: string) {
+  if (!passwordResetEnabled()) throw new HttpError(404, 'Password reset isn’t available on this server. Ask your administrator.');
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  const loginId = user && user.status === 'active' ? supabaseId(user) : null;
+  if (!user || !loginId || !user.verifyCodeHash) throw new HttpError(400, 'That code isn’t right. Ask for a new one.');
+  if (user.verifyAttempts >= MAX_ATTEMPTS) throw new HttpError(429, 'Too many wrong codes. Ask for a new one.');
+  if (!user.verifyExpires || user.verifyExpires.getTime() < Date.now()) throw new HttpError(400, 'This code has expired. Ask for a new one.');
+  const given = Buffer.from(hashCode(user.id, code.trim()));
+  const expected = Buffer.from(user.verifyCodeHash);
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+    await prisma.user.update({ where: { id: user.id }, data: { verifyAttempts: { increment: 1 } } });
+    throw new HttpError(400, 'That code isn’t right. Check the email and try again.');
+  }
+  await setLoginPassword(loginId, password);
+  await prisma.user.update({ where: { id: user.id }, data: { verifyCodeHash: null, verifyExpires: null, verifyAttempts: 0 } });
+  logger.info(`Password reset: ${user.email}`);
+}
+
 // ---- Administrator -----------------------------------------------------------------
 
 /** The administrator: ADMIN_EMAIL, or else the first real account. */
@@ -123,7 +176,14 @@ export async function assertAdmin(user: CurrentUser | null) {
   if (!(await isAdmin(user))) throw new HttpError(403, 'Only the administrator can do this.');
 }
 
-export const pendingCount = () => prisma.user.count({ where: { status: 'pending', ...(emailEnabled() ? { emailVerified: true } : {}) } });
+/** Requests ready to approve, and ones still waiting for the person to enter their email code. */
+export async function pendingCounts() {
+  const [ready, awaitingCode] = await Promise.all([
+    prisma.user.count({ where: { status: 'pending', ...(emailEnabled() ? { emailVerified: true } : {}) } }),
+    emailEnabled() ? prisma.user.count({ where: { status: 'pending', emailVerified: false } }) : 0,
+  ]);
+  return { ready, awaitingCode };
+}
 
 export async function listPeople() {
   const users = await prisma.user.findMany({

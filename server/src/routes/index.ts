@@ -73,6 +73,8 @@ apiRouter.post('/auth/demo', auth.startDemo);
 apiRouter.post('/auth/request-access', access.request);
 apiRouter.post('/auth/request-access/verify', access.verify);
 apiRouter.post('/auth/request-access/resend', access.resend);
+apiRouter.post('/auth/forgot-password', access.forgot);
+apiRouter.post('/auth/forgot-password/reset', access.reset);
 apiRouter.get('/admin/people', access.listPeople);
 apiRouter.post('/admin/people/:id/approve', access.approve);
 apiRouter.delete('/admin/people/:id', access.remove);

@@ -63,10 +63,20 @@ export default function EventsPage() {
           <div className="flex items-center gap-1.5">
           <ThemeSwitcher />
           {account?.admin && (
-            <Button variant="ghost" icon={<Users size={16} />} onClick={() => setPeopleOpen(true)} aria-label={`People${account.pendingRequests ? `, ${account.pendingRequests} waiting` : ''}`}>
+            <Button
+              variant="ghost"
+              icon={<Users size={16} />}
+              onClick={() => setPeopleOpen(true)}
+              title={peopleSummary(account.pendingRequests ?? 0, account.awaitingCode ?? 0) || 'People'}
+              aria-label={`People${peopleSummary(account.pendingRequests ?? 0, account.awaitingCode ?? 0) ? `: ${peopleSummary(account.pendingRequests ?? 0, account.awaitingCode ?? 0)}` : ''}`}
+            >
               People
+              {/* Filled: ready to approve. Outlined: still waiting for their email code. */}
               {!!account.pendingRequests && (
                 <span className="ml-1 rounded-full bg-[var(--accent-500)] px-1.5 text-[11px] leading-[18px] font-semibold text-[var(--on-accent)]">{account.pendingRequests}</span>
+              )}
+              {!!account.awaitingCode && (
+                <span className="ml-1 rounded-full border border-[var(--line-strong)] px-1.5 text-[11px] leading-[16px] font-semibold text-slate-400">{account.awaitingCode}</span>
               )}
             </Button>
           )}
@@ -268,4 +278,9 @@ function Stat({ value, label }: { value: number; label: string }) {
       <span className="text-xs text-slate-500">{label}</span>
     </span>
   );
+}
+
+/** "2 to approve · 1 waiting for their email code" — empty when nobody is waiting. */
+export function peopleSummary(ready: number, awaitingCode: number) {
+  return [ready ? `${ready} to approve` : '', awaitingCode ? `${awaitingCode} waiting for their email code` : ''].filter(Boolean).join(' · ');
 }

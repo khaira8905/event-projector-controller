@@ -95,6 +95,11 @@ email set up (Part D) they confirm the email with a 6-digit code. You get an ema
 requests an hour (`ACCESS_REQUESTS_PER_HOUR`); `ACCESS_REQUESTS=off` hides the option. You're
 the administrator because you signed in first (or set `ADMIN_EMAIL`).
 
+**Forgot password.** With email set up (Part D), the sign-in page offers **Forgot your
+password?**: a 6-digit code goes to the account's email, and they choose a new password
+(it goes straight to Supabase). It works for anyone who has signed in at least once; for an
+account that never has, reset the password in Supabase → Authentication → Users.
+
 **Removing someone:** **People → Remove** (or delete their user in Supabase → Authentication → Users). They can't sign
 in again, and if they're signed in right now they're signed out within about 2 minutes (the
 server checks with Supabase using `SUPABASE_SERVICE_ROLE_KEY`). Their events stay in the

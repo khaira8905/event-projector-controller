@@ -60,8 +60,14 @@ beforeAll(async () => {
       if (supabaseDown) return json(503, {});
       const c = created.get(admin[1]);
       if (req.method === 'PUT') {
+        const update = JSON.parse(body);
+        const known = Object.values(USERS).find((x) => x.id === admin[1]);
+        if (update.password && (c || known)) {
+          (c ?? known)!.password = update.password;
+          return json(200, { id: admin[1] });
+        }
         if (!c) return json(404, { msg: 'User not found' });
-        c.confirmed = !!JSON.parse(body).email_confirm;
+        c.confirmed = !!update.email_confirm;
         return json(200, { id: c.id });
       }
       if (req.method === 'DELETE') return created.delete(admin[1]) ? json(200, {}) : json(404, { msg: 'User not found' });
@@ -290,7 +296,7 @@ describe('accounts', () => {
     expect(waiting.body.error).toMatch(/approval/);
 
     // Only the administrator (the first account) manages people.
-    expect((await alice.agent.get('/api/auth/status')).body.account).toMatchObject({ admin: true, pendingRequests: 1 });
+    expect((await alice.agent.get('/api/auth/status')).body.account).toMatchObject({ admin: true, pendingRequests: 1, awaitingCode: 0 });
     expect((await bob.agent.get('/api/admin/people')).status).toBe(403);
     const people = (await alice.agent.get('/api/admin/people')).body;
     const dave = people.find((p: any) => p.email === 'dave@example.com');
@@ -316,6 +322,27 @@ describe('accounts', () => {
     const statuses = [];
     for (let i = 0; i < 6; i++) statuses.push((await request(app).post('/api/auth/request-access').send({ name: `P${i}`, email: `p${i}@example.com`, password: 'password-1' })).status);
     expect(statuses).toEqual([201, 201, 201, 201, 201, 429]);
+    config.email.brevoApiKey = '';
+  });
+
+  it('lets people reset a forgotten password with an emailed code', async () => {
+    config.email.brevoApiKey = 'brevo-key';
+    const before = mailbox.length;
+    expect((await request(app).get('/api/auth/status')).body.passwordReset).toBe(true);
+    // Same answer for unknown addresses, and nothing is sent.
+    expect((await request(app).post('/api/auth/forgot-password').send({ email: 'nobody@example.com' })).status).toBe(200);
+    expect(mailbox.length).toBe(before);
+    expect((await request(app).post('/api/auth/forgot-password').send({ email: 'bob@example.com' })).status).toBe(200);
+    await new Promise((r) => setTimeout(r, 100));
+    const code = mailbox.filter((m) => m.to === 'bob@example.com').at(-1)!.text.match(/\b(\d{6})\b/)![1];
+    const wrong = code === '123456' ? '654321' : '123456';
+    expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code: wrong, password: 'bob-new-pass' })).status).toBe(400);
+    expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'short' })).status).toBe(400);
+    expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'bob-new-pass' })).status).toBe(200);
+    expect((await signIn('bob@example.com', 'bob-pass-1')).res.status).toBe(401);
+    expect((await signIn('bob@example.com', 'bob-new-pass')).res.status).toBe(200);
+    // A used code doesn't work twice.
+    expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'bob-other-pass' })).status).toBe(400);
     config.email.brevoApiKey = '';
   });
 

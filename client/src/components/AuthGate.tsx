@@ -177,9 +177,30 @@ function SignIn({
   initialError: string | null;
   demoEnded: boolean;
 }) {
-  const [asking, setAsking] = useState(false);
-  if (asking && status.access) return <RequestAccess verify={status.access.verify} onBack={() => setAsking(false)} />;
-  return <SignInForm status={status} onDone={onDone} onDemo={onDemo} initialError={initialError} demoEnded={demoEnded} onAsk={status.access ? () => setAsking(true) : undefined} />;
+  const [page, setPage] = useState<'sign-in' | 'ask' | 'forgot'>('sign-in');
+  const [resetEmail, setResetEmail] = useState('');
+  if (page === 'ask' && status.access) return <RequestAccess verify={status.access.verify} onBack={() => setPage('sign-in')} />;
+  if (page === 'forgot')
+    return (
+      <ForgotPassword
+        onBack={(email) => {
+          setResetEmail(email);
+          setPage('sign-in');
+        }}
+      />
+    );
+  return (
+    <SignInForm
+      status={status}
+      onDone={onDone}
+      onDemo={onDemo}
+      initialError={initialError}
+      initialEmail={resetEmail}
+      demoEnded={demoEnded}
+      onAsk={status.access ? () => setPage('ask') : undefined}
+      onForgot={status.passwordReset ? () => setPage('forgot') : undefined}
+    />
+  );
 }
 
 function SignInForm({
@@ -187,19 +208,23 @@ function SignInForm({
   onDone,
   onDemo,
   initialError,
+  initialEmail,
   demoEnded,
   onAsk,
+  onForgot,
 }: {
   status: AuthStatus;
   onDone: () => Promise<void>;
   onDemo: () => Promise<void>;
   initialError: string | null;
+  initialEmail: string;
   demoEnded: boolean;
   onAsk?: () => void;
+  onForgot?: () => void;
 }) {
   const setup = status.provider === 'local' && !status.configured;
   const supabase = status.provider === 'supabase';
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   // Coming back from "Continue with Google" with a refusal: show why.
@@ -284,18 +309,28 @@ function SignInForm({
               </a>
             </>
           )}
-          {supabase &&
-            (onAsk ? (
-              <p className="t-support">
-                No account yet?{' '}
-                <button type="button" onClick={onAsk} className="font-semibold text-[var(--accent-500)] hover:underline">
-                  Request access
+          {supabase && (
+            <p className="t-support">
+              {onAsk ? (
+                <>
+                  No account yet?{' '}
+                  <button type="button" onClick={onAsk} className="font-semibold text-[var(--accent-500)] hover:underline">
+                    Request access
+                  </button>
+                  .{' '}
+                </>
+              ) : (
+                'No account yet? Ask your EventControl administrator. '
+              )}
+              {onForgot ? (
+                <button type="button" onClick={onForgot} className="font-semibold text-[var(--accent-500)] hover:underline">
+                  Forgot your password?
                 </button>
-                . Forgot your password? Ask your EventControl administrator.
-              </p>
-            ) : (
-              <p className="t-support">No account yet, or forgot your password? Ask your EventControl administrator.</p>
-            ))}
+              ) : (
+                'Forgot your password? Ask your EventControl administrator.'
+              )}
+            </p>
+          )}
           {!setup && status.demo && (
             <div className="mt-2 border-t ec-line pt-4">
               <Button
@@ -329,6 +364,138 @@ function SignInForm({
           )}
         </div>
       </form>
+    </Centered>
+  );
+}
+
+/** "Forgot your password?": a 6-digit code to the account's email, then a new password. */
+function ForgotPassword({ onBack }: { onBack: (email: string) => void }) {
+  const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Reset password · EventControl';
+  }, []);
+
+  const run = async (fn: () => Promise<void>) => {
+    setError(null);
+    setNote(null);
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Centered>
+      <div className="ec-card ec-modal-in w-full max-w-sm rounded-lg p-6 text-left">
+        <div className="mb-5 flex items-center justify-between">
+          <BrandMark />
+          <KeyRound size={18} className="text-slate-500" />
+        </div>
+        {step === 'email' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await api.forgotPassword(email);
+                setStep('code');
+              });
+            }}
+          >
+            <h1 className="t-page">Reset your password</h1>
+            <p className="t-support mt-1.5 mb-5">Enter your account’s email. We’ll send you a code to choose a new password.</p>
+            <div className="grid gap-3">
+              <Field label="Email">
+                <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus required />
+              </Field>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+              <Button type="submit" variant="primary" size="lg" className="mt-1 h-11" disabled={busy}>
+                {busy ? 'Please wait…' : 'Send code'}
+              </Button>
+            </div>
+          </form>
+        )}
+        {step === 'code' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (password.length < 8) return setError('Use at least 8 characters for the password.');
+              if (password !== confirm) return setError('The passwords do not match.');
+              void run(async () => {
+                await api.resetPassword(email, code, password);
+                setStep('done');
+              });
+            }}
+          >
+            <h1 className="t-page">Check your email</h1>
+            <p className="t-support mt-1.5 mb-5">
+              If <span className="font-semibold text-slate-200">{email}</span> has an account, a 6-digit code is on its way. It may take a minute, and can land in spam.
+            </p>
+            <div className="grid gap-3">
+              <Field label="Code">
+                <TextInput
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+                  className="t-num text-center text-[20px] tracking-[0.4em]"
+                />
+              </Field>
+              <Field label="New password (at least 8 characters)">
+                <TextInput type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
+              </Field>
+              <Field label="Repeat new password">
+                <TextInput type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required />
+              </Field>
+              {error && <p className="text-sm text-red-400">{error}</p>}
+              {note && <p className="text-sm text-emerald-400">{note}</p>}
+              <Button type="submit" variant="primary" size="lg" className="mt-1 h-11" disabled={busy || code.length !== 6}>
+                {busy ? 'Please wait…' : 'Save new password'}
+              </Button>
+              <button
+                type="button"
+                className="t-support text-left hover:underline"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await api.forgotPassword(email);
+                    setNote('If the address has an account, a new code is on its way.');
+                  })
+                }
+              >
+                Didn’t get it? Send a new code
+              </button>
+            </div>
+          </form>
+        )}
+        {step === 'done' && (
+          <div>
+            <h1 className="t-page">Password changed</h1>
+            <p className="t-support mt-1.5 mb-5">Sign in with your new password.</p>
+            <Button variant="primary" size="lg" className="h-11 w-full" onClick={() => onBack(email)}>
+              Sign in
+            </Button>
+          </div>
+        )}
+        {step !== 'done' && (
+          <Button size="sm" variant="ghost" className="mt-4" onClick={() => onBack(email)}>
+            ← Back to sign in
+          </Button>
+        )}
+      </div>
     </Centered>
   );
 }
@@ -499,7 +666,7 @@ function DemoBanner({ endsAt, onEnd }: { endsAt: number; onEnd: () => void }) {
   const m = minutes % 60;
   const left = h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
   return (
-    <div role="status" className="ec-card ec-modal-in fixed bottom-4 left-1/2 z-40 flex w-[min(34rem,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-md py-2 pr-2 pl-3.5 text-[13px] shadow-lg">
+    <div role="status" className="ec-card ec-modal-in fixed top-3 left-1/2 z-40 flex w-[min(34rem,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-md py-2 pr-2 pl-3.5 text-[13px] shadow-lg">
       <span className="ec-label shrink-0 text-[var(--accent-500)]">Demo</span>
       <span className="min-w-0 flex-1 text-slate-300">{lastMinute ? 'One minute left in your demo.' : `Your private copy: try anything. It’s deleted in ${left}.`}</span>
       <Button size="sm" variant="ghost" className="shrink-0" onClick={onEnd}>

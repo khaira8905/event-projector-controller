@@ -422,7 +422,9 @@ export default function DashboardPage() {
       ? { name: google.account.name, picture: google.account.picture }
       : null;
 
-  const driveButton = (
+  // Demo guests can't connect outside accounts, so Google Drive isn't offered to them at all.
+  const isDemo = auth?.account?.plan === 'demo';
+  const driveButton = isDemo ? null : (
     <Button size="sm" variant="secondary" icon={<DriveIcon size={15} />} onClick={() => setDriveTarget('library')}>
       Google Drive
     </Button>
@@ -863,10 +865,14 @@ export default function DashboardPage() {
           onClose={() => setPickerOpen(false)}
           onAdd={(files) => addToFlow(files)}
           onUpload={(files) => void upload(files)}
-          onDrive={() => {
-            setPickerOpen(false);
-            setDriveTarget('flow');
-          }}
+          onDrive={
+            isDemo
+              ? undefined
+              : () => {
+                  setPickerOpen(false);
+                  setDriveTarget('flow');
+                }
+          }
         />
         <DriveBrowser open={driveTarget !== null} status={google} onClose={() => setDriveTarget(null)} onImport={importFromDrive} onStatusChange={refreshGoogle} />
         <QuickSelectionEditor

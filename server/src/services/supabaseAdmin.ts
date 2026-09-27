@@ -50,3 +50,7 @@ export async function unlockLogin(supabaseId: string) {
 export async function deleteLogin(supabaseId: string) {
   await call('DELETE', `/${encodeURIComponent(supabaseId)}`);
 }
+
+export async function setLoginPassword(supabaseId: string, password: string) {
+  await call('PUT', `/${encodeURIComponent(supabaseId)}`, { password });
+}

@@ -229,12 +229,14 @@ export interface AuthStatus {
   /** "Continue with Google" is available on the sign-in page. */
   google?: boolean;
   /** The signed-in account (accounts mode). demoEndsAt: a "Try the demo" guest, deleted then. */
-  account?: { email: string; name: string; plan: string; demoEndsAt?: number; admin?: boolean; pendingRequests?: number } | null;
+  account?: { email: string; name: string; plan: string; demoEndsAt?: number; admin?: boolean; pendingRequests?: number; awaitingCode?: number } | null;
   /** "Try the demo" is offered on the sign-in page (and at /demo), lasting demoMinutes. */
   demo?: boolean;
   demoMinutes?: number;
   /** "Request access" on the sign-in page; verify: a code is emailed to confirm the address. */
   access?: { verify: boolean } | null;
+  /** "Forgot your password?" on the sign-in page (a code is emailed). */
+  passwordReset?: boolean;
 }
 
 /** Someone with an account, or asking for one (administrator's People list). */

@@ -31,7 +31,8 @@ export function FilePicker({
   onClose: () => void;
   onAdd: (files: Media[]) => Promise<void>;
   onUpload: (files: File[]) => void;
-  onDrive: () => void;
+  /** Missing: Google Drive isn't offered (the demo). */
+  onDrive?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
@@ -113,9 +114,11 @@ export function FilePicker({
         <Button icon={<HardDriveUpload size={16} />} onClick={() => input.current?.click()} disabled={uploadProgress !== null}>
           {uploadProgress !== null ? `Uploading ${Math.round(uploadProgress * 100)}%` : 'From this computer'}
         </Button>
-        <Button icon={<DriveIcon size={16} />} onClick={onDrive} title={driveAvailable ? 'Import from Google Drive' : 'Connect Google Drive in Settings → File sources'}>
-          Google Drive
-        </Button>
+        {onDrive && (
+          <Button icon={<DriveIcon size={16} />} onClick={onDrive} title={driveAvailable ? 'Import from Google Drive' : 'Connect Google Drive in Settings → File sources'}>
+            Google Drive
+          </Button>
+        )}
       </div>
 
       <ul className="mt-3 max-h-[52vh] divide-y divide-[var(--line)] overflow-y-auto rounded-md border border-[var(--line)]" role="listbox" aria-multiselectable>

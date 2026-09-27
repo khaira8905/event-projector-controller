@@ -16,7 +16,9 @@ export async function getStatus(req: Request, res: Response) {
     auth: { provider: config.auth.provider },
     // "Open in PowerPoint" launches the app on the server's screen: only offered to a browser on that machine.
     openExternally: config.allowExternalOpen && isLocalRequest(req),
-    disk: await diskSpace(),
+    // The server's free space means something on your own computer, not on a hosted server
+    // shared through accounts.
+    disk: config.auth.provider === 'supabase' ? null : await diskSpace(),
   });
 }
 

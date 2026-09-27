@@ -33,6 +33,22 @@ export async function resend(req: Request, res: Response) {
   res.json({ ok: true });
 }
 
+// ---- Public: forgot password -------------------------------------------------------
+
+const resetSchema = codeSchema.extend({ password: z.string().min(8, 'Use at least 8 characters for the password.').max(72) });
+
+export async function forgot(req: Request, res: Response) {
+  const { email } = emailSchema.parse(req.body);
+  await access.startPasswordReset(email, req.ip ?? 'unknown');
+  res.json({ ok: true });
+}
+
+export async function reset(req: Request, res: Response) {
+  const { email, code, password } = resetSchema.parse(req.body);
+  await access.finishPasswordReset(email, code, password);
+  res.json({ ok: true });
+}
+
 // ---- Administrator: approving and removing people ----------------------------------
 
 export async function listPeople(_req: Request, res: Response) {
