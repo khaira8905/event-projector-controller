@@ -1,0 +1,25 @@
+# Keeps the hosted EventControl from going idle for good: Supabase's free plan pauses a project
+# after 7 days without activity. Once a day this wakes the Render server (it sleeps after ~15
+# minutes idle and takes about a minute to start) and asks it to touch the database.
+# Uses ~1 minute of GitHub Actions a day. Change the address below if the site moves.
+name: Keep alive
+
+on:
+  schedule:
+    - cron: '17 6 * * *' # every day, 06:17 UTC
+  workflow_dispatch: # "Run workflow" button, to try it
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Wake the server and touch the database
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 90 https://eventcontrol.onrender.com/api/keep-alive; then
+              echo; echo "Active."; exit 0
+            fi
+            echo "Not ready yet (attempt $attempt), retrying in 30 s…"; sleep 30
+          done
+          echo "The site didn't answer. Check Render and Supabase."; exit 1

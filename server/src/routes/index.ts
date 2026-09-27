@@ -56,6 +56,10 @@ export const apiRouter = Router();
 
 apiRouter.use(requireAuth);
 
+// Called once a day by .github/workflows/keep-alive.yml: touching the database and Supabase
+// counts as activity, so Supabase's free plan never pauses the project for being idle.
+apiRouter.get('/keep-alive', status.keepAlive);
+
 apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true, time: Date.now() });
 });

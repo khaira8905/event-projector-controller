@@ -8,7 +8,7 @@ import { runAs, userFromSubject } from '../services/accounts';
  * media file downloads (the projector display loads files without signing in;
  * media ids are unguessable).
  */
-const PUBLIC = [/^\/health$/, /^\/auth\//, /^\/media\/[^/]+\/(file|render)$/];
+const PUBLIC = [/^\/health$/, /^\/keep-alive$/, /^\/auth\//, /^\/media\/[^/]+\/(file|render)$/];
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!authEnabled()) return next();

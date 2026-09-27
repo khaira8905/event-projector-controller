@@ -38,6 +38,7 @@ beforeAll(async () => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     };
+    if (req.url === '/auth/v1/health' && req.headers.apikey === 'anon-key') return json(200, { name: 'GoTrue' });
     const admin = req.url?.match(/^\/auth\/v1\/admin\/users\/([^/?]+)$/);
     if (admin && req.method === 'GET' && req.headers.apikey === 'sb_secret_test') {
       if (supabaseDown) return json(503, {});
@@ -232,6 +233,12 @@ describe('accounts', () => {
     expect(results).toEqual([201, 201, 201, 201, 201, 429]);
     await prisma.user.updateMany({ where: { plan: 'demo' }, data: { createdAt: new Date(0) } });
     await removeExpiredDemos();
+  });
+
+  it('answers the daily keep-alive without signing in, touching the database and Supabase', async () => {
+    const res = await request(app).get('/api/keep-alive');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, database: true, supabase: true });
   });
 
   it('keeps the sign-in only for this browser session', async () => {
