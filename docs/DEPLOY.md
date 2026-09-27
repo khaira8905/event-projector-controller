@@ -101,8 +101,9 @@ user there → *Send password recovery* or set a new password.
   *Settings → Event & sharing → Projector link*). Press **F** in it for fullscreen.
 - **Free plan sleeps** after ~15 minutes without visitors; the first visit then takes about a
   minute. **Open the link 5 minutes before the event.**
-- **Supabase pauses** a free project after a week without use — *Restore* it in Supabase
-  (nothing is lost).
+- **Supabase pauses** a free project after a week without use. The *Keep alive* workflow
+  (GitHub → Actions) visits the site once a day so this doesn't happen. If it ever does,
+  *Restore* the project in Supabase (nothing is lost).
 - **Updates:** every push to GitHub `main` redeploys automatically.
 
 ## If something goes wrong
