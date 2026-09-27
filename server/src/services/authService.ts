@@ -3,7 +3,7 @@ import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { HttpError } from '../lib/errors';
 import { logger } from '../lib/logger';
-import { upsertUser } from './accounts';
+import { noteAccountActive, upsertUser } from './accounts';
 
 /**
  * Operator authentication.
@@ -182,6 +182,7 @@ export async function changePassword(current: string, next: string) {
 export async function authenticate(credentials: { email?: string; password: string }): Promise<string> {
   if (config.auth.provider === 'supabase') {
     const identity = await authenticateWithSupabase(credentials.email ?? '', credentials.password);
+    noteAccountActive(identity.authId);
     const user = await upsertUser(identity);
     return `user:${user.id}`;
   }

@@ -169,6 +169,8 @@ export function useEventSocket(eventId: string | undefined, role: 'operator' | '
       const socket = socketRef.current;
       if (!socket) return { ok: false, error: 'Not connected to the server.' };
       const res = await emitWithAck(socket, 'control', command);
+      // Signed out meanwhile (sign-in expired or account removed): show the sign-in screen.
+      if (!res.ok && res.status === 401) window.dispatchEvent(new Event('eventcontrol:unauthenticated'));
       if (res.ok && res.data && typeof res.data === 'object') {
         const data = res.data as Partial<DisplaySnapshot & TimerSnapshot>;
         // Apply acknowledged state immediately (the broadcast will confirm it).

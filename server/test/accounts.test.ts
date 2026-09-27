@@ -2,7 +2,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { io as connect, type Socket } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app';
 import { createSocketServer } from '../src/socket';
 import { config } from '../src/config';
@@ -17,7 +17,11 @@ import { stopAll } from '../src/services/timerService';
 const USERS: Record<string, { id: string; password: string; name: string }> = {
   'alice@example.com': { id: 'uuid-alice', password: 'alice-pass-1', name: 'Alice' },
   'bob@example.com': { id: 'uuid-bob', password: 'bob-pass-1', name: 'Bob' },
+  'carol@example.com': { id: 'uuid-carol', password: 'carol-pass-1', name: 'Carol' },
 };
+/** Accounts the administrator deleted in Supabase. */
+const removed = new Set<string>();
+let supabaseDown = false;
 
 const app = createApp();
 let server: http.Server;
@@ -33,9 +37,15 @@ beforeAll(async () => {
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     };
+    const admin = req.url?.match(/^\/auth\/v1\/admin\/users\/([^/?]+)$/);
+    if (admin && req.method === 'GET' && req.headers.apikey === 'sb_secret_test') {
+      if (supabaseDown) return json(503, {});
+      const u = Object.values(USERS).find((x) => x.id === admin[1]);
+      return !u || removed.has(u.id) ? json(404, { msg: 'User not found' }) : json(200, { id: u.id, banned_until: null });
+    }
     if (req.url?.startsWith('/auth/v1/token') && req.headers.apikey === 'anon-key') {
       const { email, password } = JSON.parse(body || '{}');
-      const u = USERS[email];
+      const u = USERS[email] && !removed.has(USERS[email].id) ? USERS[email] : undefined;
       if (email === 'pending@example.com') return json(400, { error: 'invalid_grant', error_description: 'Email not confirmed' });
       if (!u || u.password !== password) return json(400, { error: 'invalid_grant', error_description: 'Invalid login credentials' });
       return json(200, { access_token: 'x', user: { id: u.id, email, user_metadata: { full_name: u.name } } });
@@ -59,6 +69,8 @@ afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   await new Promise((resolve) => fake.close(resolve));
   config.supabase.url = '';
+  config.supabase.serviceKey = '';
+  vi.useRealTimers();
   await prisma.$disconnect();
 });
 
@@ -141,5 +153,43 @@ describe('accounts', () => {
     expect((await again.agent.get('/api/account')).body.preferences).toEqual(prefs);
     const tooBig = { blob: 'x'.repeat(25_000) };
     expect((await alice.agent.put('/api/account/preferences').send({ preferences: tooBig })).status).toBe(400);
+  });
+
+  it('signs someone out within minutes of their account being removed in Supabase', async () => {
+    config.supabase.serviceKey = 'sb_secret_test';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const later = (minutes: number) => vi.setSystemTime(Date.now() + minutes * 60_000);
+
+    const carol = await signIn('carol@example.com');
+    const event = (await carol.agent.post('/api/events').send({ name: 'Carol Show', date: '2026-10-03' })).body.id;
+    const socket = connect(baseUrl, { transports: ['websocket'], extraHeaders: { cookie: carol.cookie } });
+    sockets.push(socket);
+    const emit = (name: string, payload: unknown) => new Promise<any>((resolve) => socket.emit(name, payload, resolve));
+    expect(await emit('event:join', { eventId: event, role: 'operator' })).toMatchObject({ ok: true });
+    expect(await emit('control', { type: 'black' })).toMatchObject({ ok: true });
+
+    // Supabase unreachable: nobody is thrown out of a running show over it.
+    supabaseDown = true;
+    later(3);
+    expect((await carol.agent.get('/api/events')).status).toBe(200);
+    supabaseDown = false;
+
+    removed.add('uuid-carol');
+    later(3);
+    expect((await carol.agent.get('/api/events')).status).toBe(401);
+    const status = await carol.agent.get('/api/auth/status');
+    expect(status.body).toMatchObject({ authenticated: false, account: null });
+    expect(String(status.headers['set-cookie'])).toMatch(/ec_session=;/);
+    expect(await emit('control', { type: 'black' })).toMatchObject({ ok: false, status: 401 });
+    expect((await signIn('carol@example.com')).res.status).toBe(401);
+    // Everyone else carries on.
+    expect((await alice.agent.get('/api/events')).status).toBe(200);
+  });
+
+  it('keeps the sign-in only for this browser session', async () => {
+    const { res } = await signIn('bob@example.com');
+    const cookie = String(res.headers['set-cookie']);
+    expect(cookie).toMatch(/ec_session=/);
+    expect(cookie).not.toMatch(/Max-Age|Expires/i);
   });
 });

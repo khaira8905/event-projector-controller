@@ -75,8 +75,16 @@ without seeing or touching each other's. Only you (the administrator) create acc
 The projector link of each event (`…/display/<event id>`) still opens without signing in, so
 it's easy to use on the venue computer; it only ever shows the audience picture.
 
-To remove someone, delete their user in Supabase → Authentication → Users. To reset a password,
-open the user there → *Send password recovery* or set a new password.
+**Signing in and out.** A sign-in lasts while the console is open: closing the tab (or the
+browser) means signing in again next time; reloading the page doesn't. *Settings → Account &
+sharing → Sign out* signs out every tab of that browser. However long the tab stays open, a
+sign-in ends after 24 hours (change it with `SESSION_HOURS` in Render).
+
+**Removing someone:** delete their user in Supabase → Authentication → Users. They can't sign
+in again, and if they're signed in right now they're signed out within about 2 minutes (the
+server checks with Supabase using `SUPABASE_SERVICE_ROLE_KEY`). Their events stay in the
+database; re-creating a user with the same email gives them back. To reset a password, open the
+user there → *Send password recovery* or set a new password.
 
 ---
 

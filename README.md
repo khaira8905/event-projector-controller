@@ -180,7 +180,7 @@ Copy **`.env.example`** to **`.env`** in the project folder and fill in what you
 | `ADMIN_EMAIL` | first account | The account that takes over events created before accounts were turned on |
 | `PUBLIC_APP_URL`, `PUBLIC_API_URL` | empty | Only when the UI is hosted separately from the server (see *Sharing a public link*) |
 | `CORS_ORIGINS` | empty | Extra sites allowed to call the API |
-| `SESSION_HOURS` | `168` | How long a sign-in lasts |
+| `SESSION_HOURS` | `24` | Longest a sign-in lasts. Closing the console tab (or the browser) always ends it sooner. |
 | `SOFFICE_PATH` | auto-detected | Path to LibreOffice's `soffice` if it's installed somewhere unusual |
 | `CONVERSION_TIMEOUT_SECONDS` | `180` | Give up converting a deck after this long |
 | `PORT` / `HOST` | `4000` / `0.0.0.0` | Server address (all interfaces, so a projector PC on the LAN can connect) |

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { KeyRound } from 'lucide-react';
 import { BrandMark } from './BrandMark';
 import { Button } from './ui/Button';
@@ -6,6 +6,7 @@ import { Pending } from './ui/Pending';
 import { Field, TextInput } from './ui/Field';
 import { api } from '../services/api';
 import { AccountSync } from '../lib/accountSync';
+import { announceSignOut, clearTabSignedIn, markTabSignedIn, onSignOutElsewhere, tabIsSignedIn } from '../lib/tabSession';
 import type { AuthStatus } from '../types';
 
 interface AuthContextValue {
@@ -24,9 +25,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const firstLoad = useRef(true);
   const load = useCallback(async () => {
     try {
-      setStatus(await api.authStatus());
+      // Back from "Continue with Google": this tab has just signed in.
+      if (firstLoad.current && new URLSearchParams(window.location.search).get('google') === 'signed-in') markTabSignedIn();
+      firstLoad.current = false;
+      let next = await api.authStatus();
+      // A sign-in left over from a tab that was closed doesn't count: sign in again.
+      if (next.enabled && next.authenticated && !(await tabIsSignedIn())) {
+        await api.logout().catch(() => {});
+        next = await api.authStatus();
+      }
+      if (next.enabled && !next.authenticated) clearTabSignedIn();
+      setStatus(next);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cannot reach the server.');
@@ -37,10 +49,39 @@ export function AuthGate({ children }: { children: ReactNode }) {
     void load();
     const onExpired = () => void load();
     window.addEventListener('eventcontrol:unauthenticated', onExpired);
-    return () => window.removeEventListener('eventcontrol:unauthenticated', onExpired);
+    const stopListening = onSignOutElsewhere(() => {
+      clearTabSignedIn();
+      void load();
+    });
+    return () => {
+      window.removeEventListener('eventcontrol:unauthenticated', onExpired);
+      stopListening();
+    };
   }, [load]);
 
+  // An open console notices within a few minutes when its sign-in ends (expired, or the account
+  // was removed), even without clicking anything.
+  const signedIn = !!status?.enabled && status.authenticated;
+  useEffect(() => {
+    if (!signedIn) return;
+    const check = () => {
+      if (document.visibilityState !== 'visible') return;
+      api
+        .authStatus()
+        .then((s) => !s.authenticated && void load())
+        .catch(() => {});
+    };
+    const timer = window.setInterval(check, 2 * 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [signedIn, load]);
+
   const signOut = useCallback(async () => {
+    clearTabSignedIn();
+    announceSignOut();
     await api.logout().catch(() => {});
     await load();
   }, [load]);
@@ -102,6 +143,7 @@ function SignIn({ status, onDone }: { status: AuthStatus; onDone: () => Promise<
     try {
       if (setup) await api.setupPassword(password);
       else await api.login(password, supabase ? email : undefined);
+      markTabSignedIn();
       await onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in.');

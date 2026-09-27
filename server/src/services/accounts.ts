@@ -5,6 +5,7 @@ import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { HttpError, notFound } from '../lib/errors';
 import { logger } from '../lib/logger';
+import { serviceHeaders } from './storage/supabaseStorage';
 
 /**
  * Accounts. With sign-in enabled every request runs "as" one user (set by requireAuth),
@@ -71,11 +72,57 @@ async function claimLegacyEvents(user: User) {
 export async function userFromSubject(subject: string): Promise<CurrentUser | null> {
   if (subject.startsWith('user:')) {
     const user = await prisma.user.findUnique({ where: { id: subject.slice(5) } });
-    return user ? toCurrent(user) : null;
+    return user && (await accountStillActive(user.authId)) ? toCurrent(user) : null;
   }
   if (subject === 'operator') return upsertUser({ authId: 'local:operator', email: 'operator@local', name: 'Operator' });
   if (subject.startsWith('google:')) return upsertUser({ authId: subject, email: subject.slice(7) });
   return null;
+}
+
+// ---- Removed accounts -------------------------------------------------------------------
+
+/**
+ * Sessions are signed cookies, so on their own they'd outlive an account deleted (or banned)
+ * in Supabase. Every few minutes the server asks Supabase whether the account still exists;
+ * once it doesn't, that person's next request is refused and the console shows Sign in.
+ * If Supabase can't be reached, the last answer stands: a network blip never ends a show.
+ */
+const ACCOUNT_CHECK_MS = 2 * 60_000;
+const accountChecks = new Map<string, { active: boolean; at: number; pending?: Promise<boolean> }>();
+
+/** A successful sign-in proves the account is active right now. */
+export function noteAccountActive(authId: string) {
+  accountChecks.set(authId, { active: true, at: Date.now() });
+}
+
+async function accountStillActive(authId: string): Promise<boolean> {
+  const { url, serviceKey } = config.supabase;
+  if (!authId.startsWith('supabase:') || !url || !serviceKey) return true;
+  const known = accountChecks.get(authId);
+  if (known && Date.now() - known.at < ACCOUNT_CHECK_MS) return known.active;
+  if (known?.pending) return known.pending;
+  const previous = known?.active ?? true;
+  const pending = (async () => {
+    let active = previous;
+    try {
+      const res = await fetch(`${url}/auth/v1/admin/users/${encodeURIComponent(authId.slice('supabase:'.length))}`, {
+        headers: serviceHeaders(serviceKey),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.status === 404) active = false;
+      else if (res.ok) {
+        const u: any = await res.json().catch(() => ({}));
+        active = !(u?.banned_until && Date.parse(u.banned_until) > Date.now());
+      } else logger.warn(`Couldn't check an account with Supabase (${res.status}); keeping it signed in.`);
+    } catch (err) {
+      logger.warn('Couldn’t reach Supabase to check an account; keeping it signed in.', err);
+    }
+    if (previous && !active) logger.info('An account was removed in Supabase: signing it out.');
+    accountChecks.set(authId, { active, at: Date.now() });
+    return active;
+  })();
+  accountChecks.set(authId, { active: previous, at: known?.at ?? 0, pending });
+  return pending;
 }
 
 // ---- Preferences that follow the account ----------------------------------------------

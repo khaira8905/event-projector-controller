@@ -52,7 +52,8 @@ export const config = {
     // "local": optional private mode; an operator password stored (hashed) in the database.
     // "supabase": optional private mode; operators sign in with a Supabase Auth email + password.
     provider: authProvider(process.env.AUTH_PROVIDER),
-    sessionHours: Number(process.env.SESSION_HOURS ?? 24 * 7),
+    // Longest a sign-in lasts, even with the console left open (closing the tab ends it sooner).
+    sessionHours: Number(process.env.SESSION_HOURS ?? 24),
     // Accounts: this person takes over events created before accounts existed (default: the first account).
     adminEmail: (process.env.ADMIN_EMAIL ?? '').trim().toLowerCase(),
   },

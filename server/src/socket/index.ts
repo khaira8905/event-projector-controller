@@ -116,11 +116,17 @@ export function createSocketServer(httpServer: HttpServer): Server {
         if (!eventId || socket.data.role !== 'operator') {
           throw new HttpError(403, 'Join the event as an operator first.');
         }
+        // An open console outlives its sign-in: re-check (cached) that the account still exists
+        // and the session hasn't expired before carrying out anything.
+        if (authEnabled()) {
+          const session = await verifySessionToken(parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE]);
+          if (!session || !(await userFromSubject(session.subject))) throw new HttpError(401, 'Please sign in.');
+        }
         const command = controlCommandSchema.parse(payload);
         const data = await execute(eventId, command);
         ack({ ok: true, data });
       } catch (err) {
-        ack({ ok: false, error: errorMessage(err) });
+        ack({ ok: false, error: errorMessage(err), status: err instanceof HttpError ? err.status : undefined });
       }
     });
 

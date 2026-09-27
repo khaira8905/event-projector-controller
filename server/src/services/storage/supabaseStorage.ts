@@ -5,6 +5,16 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { CloudStorage } from './types';
 
+/**
+ * Headers for Supabase's server-side APIs. Legacy service_role keys are JWTs and go in both
+ * headers. The newer "secret" keys (sb_secret_…) are not JWTs: they go only in `apikey`, and
+ * Supabase's gateway turns them into a short-lived token itself.
+ */
+export function serviceHeaders(serviceKey: string, extra: Record<string, string> = {}): Record<string, string> {
+  if (serviceKey.startsWith('sb_')) return { apikey: serviceKey, ...extra };
+  return { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, ...extra };
+}
+
 /** Supabase Storage via its REST API (no SDK needed). Uses the service-role key: server-side only. */
 export class SupabaseStorage implements CloudStorage {
   readonly name = 'supabase';
@@ -15,14 +25,8 @@ export class SupabaseStorage implements CloudStorage {
     private bucket: string,
   ) {}
 
-  /**
-   * Legacy service_role keys are JWTs and go in both headers. The newer "secret" keys
-   * (sb_secret_…) are not JWTs: they go only in `apikey`, and Supabase's gateway turns
-   * them into a short-lived token itself.
-   */
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    if (this.serviceKey.startsWith('sb_')) return { apikey: this.serviceKey, ...extra };
-    return { Authorization: `Bearer ${this.serviceKey}`, apikey: this.serviceKey, ...extra };
+    return serviceHeaders(this.serviceKey, extra);
   }
 
   private objectUrl(key: string) {

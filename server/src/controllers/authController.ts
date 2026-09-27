@@ -16,20 +16,25 @@ const loginSchema = z.object({ email: z.string().trim().max(200).optional(), pas
 const changeSchema = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) });
 
 export async function startSession(req: Request, res: Response, subject: string) {
-  const { token, maxAgeMs } = await auth.createSessionToken(subject);
-  res.cookie(auth.SESSION_COOKIE, token, cookieOptions(req, { sameSite: 'strict', maxAge: maxAgeMs, path: '/' }));
+  const { token } = await auth.createSessionToken(subject);
+  // No maxAge: a browser-session cookie, gone when the browser closes. The token itself still
+  // expires after SESSION_HOURS, and the console signs out when its tab closes (AuthGate).
+  res.cookie(auth.SESSION_COOKIE, token, cookieOptions(req, { sameSite: 'strict', path: '/' }));
 }
 
 export async function status(req: Request, res: Response) {
   const session = await auth.verifySessionToken(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]);
+  // Signed-in account (accounts mode): shown in the console and used for per-person settings.
+  // No account behind a valid cookie means it was removed: that session is over.
+  const account = session ? await accountSummary(session.subject) : null;
+  if (session && !account) res.clearCookie(auth.SESSION_COOKIE, { path: '/' });
   res.json({
     provider: config.auth.provider,
     enabled: auth.authEnabled(),
     configured: await auth.isPasswordConfigured(),
-    authenticated: !auth.authEnabled() || !!session,
-    user: session?.subject ?? null,
-    // Signed-in account (accounts mode): shown in the console and used for per-person settings.
-    account: session ? await accountSummary(session.subject) : null,
+    authenticated: !auth.authEnabled() || !!account,
+    user: account ? session!.subject : null,
+    account,
     // "Continue with Google" on the sign-in page.
     google: auth.authEnabled() && googleConfigured() && config.google.allowedEmails.length > 0,
   });
