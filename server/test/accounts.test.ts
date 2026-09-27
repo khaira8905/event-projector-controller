@@ -343,6 +343,16 @@ describe('accounts', () => {
     expect((await signIn('bob@example.com', 'bob-new-pass')).res.status).toBe(200);
     // A used code doesn't work twice.
     expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'bob-other-pass' })).status).toBe(400);
+    // Asking again and again (a minute apart) can't flood the inbox: at most 5 codes an hour.
+    app.set('trust proxy', true); // each request below comes from a different visitor
+    const sentBefore = mailbox.filter((m) => m.to === 'bob@example.com').length;
+    for (let i = 0; i < 8; i++) {
+      vi.setSystemTime(Date.now() + 61_000);
+      await request(app).post('/api/auth/forgot-password').set('X-Forwarded-For', `10.0.0.${i}`).send({ email: 'bob@example.com' });
+    }
+    await new Promise((r) => setTimeout(r, 100));
+    expect(mailbox.filter((m) => m.to === 'bob@example.com').length - sentBefore).toBe(4);
+    app.set('trust proxy', false);
     config.email.brevoApiKey = '';
   });
 

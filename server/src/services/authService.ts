@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { HttpError } from '../lib/errors';
+import { allow, forget } from '../lib/rateLimit';
 import { logger } from '../lib/logger';
 import { noteAccountActive, upsertUser } from './accounts';
 import { pendingReason } from './accessRequests';
@@ -240,19 +241,10 @@ export async function resetPassword() {
 
 // ---- Brute-force protection ----------------------------------------------------
 
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
 export function checkRateLimit(ip: string) {
-  const now = Date.now();
-  const entry = attempts.get(ip);
-  if (!entry || entry.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 60_000 });
-    return;
-  }
-  entry.count++;
-  if (entry.count > 10) throw new HttpError(429, 'Too many sign-in attempts. Wait a minute and try again.');
+  if (!allow(`login:${ip}`, 10, 60_000)) throw new HttpError(429, 'Too many sign-in attempts. Wait a minute and try again.');
 }
 
 export function clearRateLimit(ip: string) {
-  attempts.delete(ip);
+  forget(`login:${ip}`);
 }

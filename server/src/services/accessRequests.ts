@@ -3,6 +3,7 @@ import type { User } from '@prisma/client';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { HttpError, notFound } from '../lib/errors';
+import { allow } from '../lib/rateLimit';
 import { logger } from '../lib/logger';
 import type { CurrentUser } from './accounts';
 import { emailEnabled, sendEmail } from './email';
@@ -20,6 +21,7 @@ export const accessEnabled = () => config.auth.provider === 'supabase' && config
 const CODE_MINUTES = 15;
 const RESEND_AFTER_MS = 60_000;
 const MAX_ATTEMPTS = 5;
+const CODES_PER_HOUR = 5;
 
 const hashCode = (userId: string, code: string) => crypto.createHash('sha256').update(`${userId}:${code}`).digest('hex');
 const supabaseId = (u: User) => (u.authId.startsWith('supabase:') ? u.authId.slice('supabase:'.length) : null);
@@ -63,6 +65,8 @@ async function sendCode(user: User, isResend: boolean) {
   if (isResend && user.verifyExpires && user.verifyExpires.getTime() - CODE_MINUTES * 60_000 + RESEND_AFTER_MS > Date.now()) {
     throw new HttpError(429, 'A code was just sent. Wait a minute before asking for another one.');
   }
+  // Nobody's inbox gets more than a few codes an hour, whoever is asking.
+  if (!allow(`code-mail:${user.email}`, CODES_PER_HOUR)) throw new HttpError(429, 'Several codes were sent to this email in the last hour. Use the latest one, or try again later.');
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   await prisma.user.update({
     where: { id: user.id },
@@ -110,8 +114,6 @@ export async function pendingReason(email: string): Promise<string | null> {
 /** "Forgot your password?" works when accounts can be managed and codes can be emailed. */
 export const passwordResetEnabled = () => config.auth.provider === 'supabase' && emailEnabled() && supabaseAdminEnabled();
 
-const resetsByIp = new Map<string, number[]>();
-
 /**
  * Emails a reset code if the address belongs to an account. The answer is the same either
  * way, so the form can't be used to find out who has an account.
@@ -119,15 +121,14 @@ const resetsByIp = new Map<string, number[]>();
 export async function startPasswordReset(email: string, ip: string) {
   if (!passwordResetEnabled()) throw new HttpError(404, 'Password reset isn’t available on this server. Ask your administrator.');
   const now = Date.now();
-  const recent = (resetsByIp.get(ip) ?? []).filter((t) => now - t < 3600_000);
-  if (recent.length >= 5) throw new HttpError(429, 'Too many reset requests. Please try again in an hour.');
-  recent.push(now);
-  resetsByIp.set(ip, recent);
+  if (!allow(`reset-ip:${ip}`, 5)) throw new HttpError(429, 'Too many reset requests. Please try again in an hour.');
 
   const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user || user.status !== 'active' || user.plan === 'demo' || !supabaseId(user)) return;
   // A code sent less than a minute ago stays valid: don't flood the inbox.
   if (user.verifyExpires && user.verifyExpires.getTime() - CODE_MINUTES * 60_000 + RESEND_AFTER_MS > now) return;
+  // Nobody's inbox gets more than a few codes an hour, whoever is asking.
+  if (!allow(`code-mail:${user.email}`, CODES_PER_HOUR)) return;
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   await prisma.user.update({
     where: { id: user.id },

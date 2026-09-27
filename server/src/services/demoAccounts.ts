@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { HttpError } from '../lib/errors';
+import { allow } from '../lib/rateLimit';
 import { logger } from '../lib/logger';
 import { currentUser } from './accounts';
 import { createDemoEvent } from './demoSeed';
@@ -19,20 +20,14 @@ export const demoEnabled = () => config.auth.provider !== 'none' && config.demo.
 export const isDemo = (user = currentUser()) => user?.plan === DEMO_PLAN;
 export const demoEndsAt = (createdAt: Date) => createdAt.getTime() + config.demo.minutes * 60_000;
 
-const startsByIp = new Map<string, number[]>();
-
 export async function startDemo(ip: string): Promise<{ userId: string; eventId: string }> {
   if (!demoEnabled()) throw new HttpError(404, 'The demo isn’t available on this server.');
-  const now = Date.now();
-  const recent = (startsByIp.get(ip) ?? []).filter((t) => now - t < 3600_000);
-  if (recent.length >= config.demo.perIpPerHour) {
-    throw new HttpError(429, 'You’ve started several demos in the last hour. Carry on in the one you have, or try again later.');
-  }
   if ((await prisma.user.count({ where: { plan: DEMO_PLAN } })) >= config.demo.maxActive) {
     throw new HttpError(503, 'The demo is busy right now. Please try again in a little while.');
   }
-  recent.push(now);
-  startsByIp.set(ip, recent);
+  if (!allow(`demo:${ip}`, config.demo.perIpPerHour)) {
+    throw new HttpError(429, 'You’ve started several demos in the last hour. Carry on in the one you have, or try again later.');
+  }
 
   const id = crypto.randomBytes(6).toString('hex');
   const user = await prisma.user.create({

@@ -68,3 +68,21 @@ export async function remove(req: Request<{ id: string }>, res: Response) {
   await access.remove(req.params.id, me!);
   res.status(204).end();
 }
+
+/**
+ * Administrator only: which address the server sees for you, and the proxy headers it came
+ * with. Visitor limits (demos, resets, sign-in tries) count per address, so on a host behind
+ * several proxies this shows whether TRUST_PROXY is set right: "ip" should be your own address.
+ */
+export async function ipCheck(req: Request, res: Response) {
+  await access.assertAdmin(currentUser());
+  res.json({
+    ip: req.ip,
+    ips: req.ips,
+    trustProxy: req.app.get('trust proxy') ?? false,
+    forwardedFor: req.get('x-forwarded-for') ?? null,
+    cfConnectingIp: req.get('cf-connecting-ip') ?? null,
+    trueClientIp: req.get('true-client-ip') ?? null,
+    remoteAddress: req.socket.remoteAddress ?? null,
+  });
+}

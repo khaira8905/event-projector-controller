@@ -77,7 +77,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (document.visibilityState !== 'visible') return;
       api
         .authStatus()
-        .then((s) => !s.authenticated && void load())
+        .then((s) => {
+          if (!s.authenticated) return void load();
+          // Keep the People count fresh: someone may have asked for access meanwhile.
+          const a = statusRef.current?.account;
+          if (a?.admin && (a.pendingRequests !== s.account?.pendingRequests || a.awaitingCode !== s.account?.awaitingCode)) {
+            statusRef.current = s;
+            setStatus(s);
+          }
+        })
         .catch(() => {});
     };
     const timer = window.setInterval(check, 2 * 60_000);

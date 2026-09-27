@@ -78,6 +78,7 @@ apiRouter.post('/auth/forgot-password/reset', access.reset);
 apiRouter.get('/admin/people', access.listPeople);
 apiRouter.post('/admin/people/:id/approve', access.approve);
 apiRouter.delete('/admin/people/:id', access.remove);
+apiRouter.get('/admin/ip-check', access.ipCheck);
 apiRouter.post('/auth/change-password', auth.changePassword);
 // Google: one callback for both "connect Drive" and "sign in with Google" (public, verified by signed state).
 apiRouter.get('/auth/google/start', googleCtl.signInStart);
