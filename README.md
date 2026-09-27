@@ -6,6 +6,8 @@ A presentation control console for events, seminars, conferences and classrooms.
 UPLOAD → ORGANIZE → PREVIEW → QUEUE (Show Flow) → CONTROL → DISPLAY
 ```
 
+**▶ Live demo: https://eventcontrol.onrender.com/demo**. No sign-up needed. You get your own private copy of a sample event to try everything, including the projector window (*Open display*). It's deleted after 3 hours. The free server sleeps when unused, so the first visit can take about a minute.
+
 ![Operator console, White theme](docs/screenshots/console.png)
 
 <details><summary>Blue theme</summary>
@@ -178,6 +180,9 @@ Copy **`.env.example`** to **`.env`** in the project folder and fill in what you
 | `SUPABASE_BUCKET` | `eventcontrol` | Storage bucket name |
 | `AUTH_PROVIDER` | `none` (open) | **`supabase` = accounts** (the hosted setup): people sign in with the email/password you create in Supabase Auth; each account sees only its own events, and its console settings follow it to any computer. Needs `SUPABASE_URL` + `SUPABASE_ANON_KEY`. `local` = one operator password. Empty/`none` = open to anyone with the link |
 | `ADMIN_EMAIL` | first account | The account that takes over events created before accounts were turned on |
+| `DEMO` | `on` with accounts | `off` removes "Try the demo" (temporary guest accounts with a copy of the sample event) |
+| `DEMO_HOURS` | `3` | How long a demo lasts before it and everything in it is deleted |
+| `DEMO_MAX_ACTIVE` | `40` | Most demos at the same time (protects the free server) |
 | `PUBLIC_APP_URL`, `PUBLIC_API_URL` | empty | Only when the UI is hosted separately from the server (see *Sharing a public link*) |
 | `CORS_ORIGINS` | empty | Extra sites allowed to call the API |
 | `SESSION_HOURS` | `24` | Longest a sign-in lasts. Closing the console tab (or the browser) always ends it sooner. |

@@ -58,6 +58,18 @@ export const config = {
     adminEmail: (process.env.ADMIN_EMAIL ?? '').trim().toLowerCase(),
   },
 
+  // "Try the demo" on the sign-in page (and /demo): temporary guest accounts with their own copy
+  // of the demo show, deleted after DEMO_HOURS. On by default when people sign in with accounts.
+  demo: {
+    enabled: process.env.DEMO ? process.env.DEMO === 'on' : authProvider(process.env.AUTH_PROVIDER) === 'supabase',
+    hours: Number(process.env.DEMO_HOURS ?? 3),
+    maxActive: Number(process.env.DEMO_MAX_ACTIVE ?? 40),
+    perIpPerHour: 5,
+    maxEvents: 5,
+    maxFiles: 25,
+    maxUploadBytes: 25 * 1024 * 1024,
+  },
+
   // Cloud storage for uploaded files. Leave SUPABASE_URL empty to keep files local only.
   supabase: {
     url: (process.env.SUPABASE_URL ?? '').replace(/\/+$/, ''),

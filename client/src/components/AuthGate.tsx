@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Play, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
 import { Button } from './ui/Button';
 import { Pending } from './ui/Pending';
@@ -86,6 +87,38 @@ export function AuthGate({ children }: { children: ReactNode }) {
     await load();
   }, [load]);
 
+  // "Try the demo": a private guest account with its own copy of the sample show, opened
+  // straight on its console. /demo starts one by itself — the link to share on a profile.
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [demoStarting, setDemoStarting] = useState(false);
+  const startDemo = useCallback(async () => {
+    setDemoStarting(true);
+    try {
+      const { eventId } = await api.startDemo();
+      markTabSignedIn();
+      navigate(`/events/${eventId}`, { replace: true });
+      await load();
+    } finally {
+      setDemoStarting(false);
+    }
+  }, [load, navigate]);
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const autoDemo = useRef(false);
+  useEffect(() => {
+    if (!status || pathname !== '/demo') return;
+    if (status.authenticated || !status.demo) {
+      navigate('/', { replace: true });
+      return;
+    }
+    if (autoDemo.current) return;
+    autoDemo.current = true;
+    startDemo().catch((err) => {
+      setDemoError(err instanceof Error ? err.message : 'Couldn’t start the demo.');
+      navigate('/', { replace: true });
+    });
+  }, [status, pathname, navigate, startDemo]);
+
   if (error)
     return (
       <Centered>
@@ -95,17 +128,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
         </Button>
       </Centered>
     );
-  if (!status)
+  if (!status || demoStarting || (pathname === '/demo' && !status.authenticated && status.demo && !demoError))
     return (
       <Centered>
-        <Pending label="Opening EventControl…" />
+        <Pending label={demoStarting || pathname === '/demo' ? 'Setting up your demo…' : 'Opening EventControl…'} />
       </Centered>
     );
-  if (!status.authenticated) return <SignIn status={status} onDone={load} />;
+  if (!status.authenticated) return <SignIn status={status} onDone={load} onDemo={startDemo} initialError={demoError} />;
   return (
     <AuthContext.Provider value={{ status, signOut }}>
       {status.account && <AccountSync key={status.account.email} />}
       {children}
+      {status.account?.demoEndsAt && <DemoBanner endsAt={status.account.demoEndsAt} onEnd={signOut} />}
     </AuthContext.Provider>
   );
 }
@@ -114,7 +148,17 @@ function Centered({ children }: { children: ReactNode }) {
   return <div className="flex min-h-dvh flex-col items-center justify-center p-6 text-center">{children}</div>;
 }
 
-function SignIn({ status, onDone }: { status: AuthStatus; onDone: () => Promise<void> }) {
+function SignIn({
+  status,
+  onDone,
+  onDemo,
+  initialError,
+}: {
+  status: AuthStatus;
+  onDone: () => Promise<void>;
+  onDemo: () => Promise<void>;
+  initialError: string | null;
+}) {
   const setup = status.provider === 'local' && !status.configured;
   const supabase = status.provider === 'supabase';
   const [email, setEmail] = useState('');
@@ -122,6 +166,7 @@ function SignIn({ status, onDone }: { status: AuthStatus; onDone: () => Promise<
   const [confirm, setConfirm] = useState('');
   // Coming back from "Continue with Google" with a refusal: show why.
   const [error, setError] = useState<string | null>(() => {
+    if (initialError) return initialError;
     const params = new URLSearchParams(window.location.search);
     const result = params.get('google');
     return result && result !== 'signed-in' && result !== 'connected' ? (params.get('message') ?? 'Google sign-in didn’t complete. Please try again.') : null;
@@ -196,6 +241,30 @@ function SignIn({ status, onDone }: { status: AuthStatus; onDone: () => Promise<
             </>
           )}
           {supabase && <p className="t-support">No account yet, or forgot your password? Ask your EventControl administrator.</p>}
+          {!setup && status.demo && (
+            <div className="mt-2 border-t ec-line pt-4">
+              <Button
+                type="button"
+                size="lg"
+                className="h-11 w-full"
+                icon={<Play size={15} />}
+                disabled={busy}
+                onClick={async () => {
+                  setError(null);
+                  setBusy(true);
+                  try {
+                    await onDemo();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Couldn’t start the demo.');
+                    setBusy(false);
+                  }
+                }}
+              >
+                Try the demo
+              </Button>
+              <p className="t-support mt-2 text-center">No account needed: your own private copy of a sample event, deleted after a few hours.</p>
+            </div>
+          )}
           {!setup && status.provider === 'local' && (
             <p className="text-xs text-slate-500">
               Forgot it? Stop the app and run <code className="text-slate-300">npm run reset-password</code>.
@@ -204,6 +273,36 @@ function SignIn({ status, onDone }: { status: AuthStatus; onDone: () => Promise<
         </div>
       </form>
     </Centered>
+  );
+}
+
+/**
+ * On arrival, a short note that this is a temporary demo and how long it lasts. It steps
+ * aside by itself after a few seconds so it never covers the console; the account corner of
+ * the rail keeps saying "Demo".
+ */
+function DemoBanner({ endsAt, onEnd }: { endsAt: number; onEnd: () => void }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setHidden(true), 12_000);
+    return () => window.clearTimeout(t);
+  }, []);
+  if (hidden) return null;
+  const minutes = Math.max(0, Math.round((endsAt - Date.now()) / 60_000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const left = h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
+  return (
+    <div role="status" className="ec-card ec-modal-in fixed bottom-4 left-1/2 z-40 flex w-[min(34rem,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-md py-2 pr-2 pl-3.5 text-[13px] shadow-lg">
+      <span className="ec-label shrink-0 text-[var(--accent-500)]">Demo</span>
+      <span className="min-w-0 flex-1 text-slate-300">Your private copy: try anything. It’s deleted in {left}.</span>
+      <Button size="sm" variant="ghost" className="shrink-0" onClick={onEnd}>
+        End demo
+      </Button>
+      <Button size="icon-sm" variant="ghost" className="shrink-0" onClick={() => setHidden(true)} aria-label="Hide" title="Hide">
+        <X size={14} />
+      </Button>
+    </div>
   );
 }
 

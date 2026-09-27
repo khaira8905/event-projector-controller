@@ -41,12 +41,12 @@ async function uploadOne(mediaId: string) {
   const media = await prisma.media.findUnique({ where: { id: mediaId } });
   if (!media) return;
   try {
-    await prisma.media.update({ where: { id: mediaId }, data: { cloudStatus: 'pending', cloudError: null } });
+    await prisma.media.updateMany({ where: { id: mediaId }, data: { cloudStatus: 'pending', cloudError: null } });
     await store.upload(media.storagePath, resolveStoragePath(media.storagePath), media.mimeType);
     if (media.renderPath && fs.existsSync(resolveStoragePath(media.renderPath))) {
       await store.upload(media.renderPath, resolveStoragePath(media.renderPath), 'application/pdf');
     }
-    await prisma.media.update({ where: { id: mediaId }, data: { cloudStatus: 'synced', cloudError: null } });
+    await prisma.media.updateMany({ where: { id: mediaId }, data: { cloudStatus: 'synced', cloudError: null } });
     retries.delete(mediaId);
     logger.info(`Uploaded "${media.name}" to cloud storage.`);
   } catch (err: any) {

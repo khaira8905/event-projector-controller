@@ -8,6 +8,7 @@ import { createSocketServer } from '../src/socket';
 import { config } from '../src/config';
 import { prisma } from '../src/lib/prisma';
 import { stopAll } from '../src/services/timerService';
+import { removeExpiredDemos } from '../src/services/demoAccounts';
 
 /**
  * Accounts (AUTH_PROVIDER=supabase) against a fake Supabase Auth: people sign in with the
@@ -56,6 +57,7 @@ beforeAll(async () => {
   config.auth.provider = 'supabase';
   config.supabase.url = `http://127.0.0.1:${(fake.address() as AddressInfo).port}`;
   config.supabase.anonKey = 'anon-key';
+  config.demo.enabled = true;
 
   server = http.createServer(app);
   createSocketServer(server);
@@ -184,6 +186,52 @@ describe('accounts', () => {
     expect((await signIn('carol@example.com')).res.status).toBe(401);
     // Everyone else carries on.
     expect((await alice.agent.get('/api/events')).status).toBe(200);
+  });
+
+  it('lets visitors try a private demo that is deleted after a few hours', async () => {
+    expect((await request(app).get('/api/auth/status')).body.demo).toBe(true);
+    const guest = request.agent(app);
+    const started = await guest.post('/api/auth/demo');
+    expect(started.status).toBe(201);
+    const eventId = started.body.eventId;
+
+    // Their own copy of the demo show — and nobody else's events.
+    const status = (await guest.get('/api/auth/status')).body;
+    expect(status).toMatchObject({ authenticated: true, account: { plan: 'demo', name: 'Demo guest' } });
+    expect(status.account.demoEndsAt).toBeGreaterThan(Date.now() + 2.9 * 3600_000);
+    const events = (await guest.get('/api/events')).body;
+    expect(events.map((e: any) => e.id)).toEqual([eventId]);
+    expect((await guest.get(`/api/events/${eventId}/queue`)).body.length).toBeGreaterThan(5);
+    expect((await guest.get(`/api/events/${aliceEvent}`)).status).toBe(404);
+    expect((await alice.agent.get(`/api/events/${eventId}`)).status).toBe(404);
+    // A second visitor gets a separate copy.
+    const other = request.agent(app);
+    const otherEvent = (await other.post('/api/auth/demo')).body.eventId;
+    expect(otherEvent).not.toBe(eventId);
+    expect((await other.get(`/api/events/${eventId}`)).status).toBe(404);
+
+    // A small budget, and no outside accounts.
+    expect((await guest.get('/api/integrations/google/connect')).status).toBe(403);
+    for (let i = 0; i < 4; i++) expect((await guest.post('/api/events').send({ name: `Test ${i}`, date: '2026-10-04' })).status).toBe(201);
+    const over = await guest.post('/api/events').send({ name: 'One too many', date: '2026-10-04' });
+    expect(over.status).toBe(403);
+    expect(over.body.error).toMatch(/demo/i);
+
+    // Time's up: signed out, then everything is deleted.
+    vi.setSystemTime(Date.now() + 3.1 * 3600_000);
+    expect((await guest.get('/api/events')).status).toBe(401);
+    await removeExpiredDemos();
+    expect(await prisma.event.count({ where: { id: { in: [eventId, otherEvent] } } })).toBe(0);
+    expect(await prisma.user.count({ where: { plan: 'demo' } })).toBe(0);
+    expect((await alice.agent.get(`/api/events/${aliceEvent}`)).status).toBe(200);
+  });
+
+  it('limits how many demos one visitor can start', async () => {
+    const results = [];
+    for (let i = 0; i < 6; i++) results.push((await request(app).post('/api/auth/demo')).status);
+    expect(results).toEqual([201, 201, 201, 201, 201, 429]);
+    await prisma.user.updateMany({ where: { plan: 'demo' }, data: { createdAt: new Date(0) } });
+    await removeExpiredDemos();
   });
 
   it('keeps the sign-in only for this browser session', async () => {

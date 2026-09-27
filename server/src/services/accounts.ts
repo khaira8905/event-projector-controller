@@ -19,6 +19,8 @@ export interface CurrentUser {
   email: string;
   name: string;
   plan: string;
+  /** Guest accounts from "Try the demo": when the account and its events are deleted. */
+  demoEndsAt?: number;
 }
 
 const context = new AsyncLocalStorage<CurrentUser | null>();
@@ -26,7 +28,13 @@ const context = new AsyncLocalStorage<CurrentUser | null>();
 export const runAs = <T>(user: CurrentUser | null, fn: () => T): T => context.run(user, fn);
 export const currentUser = (): CurrentUser | null => context.getStore() ?? null;
 
-const toCurrent = (u: User): CurrentUser => ({ id: u.id, email: u.email, name: u.name, plan: u.plan });
+const toCurrent = (u: User): CurrentUser => ({
+  id: u.id,
+  email: u.email,
+  name: u.name,
+  plan: u.plan,
+  ...(u.plan === 'demo' ? { demoEndsAt: u.createdAt.getTime() + config.demo.hours * 3600_000 } : {}),
+});
 
 /** Throws 404 (not 403: don't reveal that it exists) unless the current user owns the event. */
 export async function assertEventAccess(eventId: string) {
@@ -59,7 +67,8 @@ export async function upsertUser(input: { authId: string; email: string; name?: 
 
 async function claimLegacyEvents(user: User) {
   const admin = config.auth.adminEmail;
-  const eligible = admin ? user.email === admin : (await prisma.user.count()) === 1;
+  // Demo guests don't count: the first real account gets them.
+  const eligible = admin ? user.email === admin : (await prisma.user.count({ where: { plan: { not: 'demo' } } })) === 1;
   if (!eligible) return;
   const { count } = await prisma.event.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } });
   if (count) logger.info(`${user.email} now owns ${count} event(s) created before accounts.`);
@@ -72,7 +81,10 @@ async function claimLegacyEvents(user: User) {
 export async function userFromSubject(subject: string): Promise<CurrentUser | null> {
   if (subject.startsWith('user:')) {
     const user = await prisma.user.findUnique({ where: { id: subject.slice(5) } });
-    return user && (await accountStillActive(user.authId)) ? toCurrent(user) : null;
+    if (!user || !(await accountStillActive(user.authId))) return null;
+    const current = toCurrent(user);
+    // A demo is over when its time is up, even before the clean-up has deleted it.
+    return current.demoEndsAt && current.demoEndsAt < Date.now() ? null : current;
   }
   if (subject === 'operator') return upsertUser({ authId: 'local:operator', email: 'operator@local', name: 'Operator' });
   if (subject.startsWith('google:')) return upsertUser({ authId: subject, email: subject.slice(7) });

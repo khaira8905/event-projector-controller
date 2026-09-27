@@ -130,8 +130,8 @@ export interface Session {
   expiresAt: number;
 }
 
-export async function createSessionToken(subject: string): Promise<{ token: string; maxAgeMs: number }> {
-  const maxAgeMs = config.auth.sessionHours * 3600_000;
+export async function createSessionToken(subject: string, hours = config.auth.sessionHours): Promise<{ token: string; maxAgeMs: number }> {
+  const maxAgeMs = Math.min(hours, config.auth.sessionHours) * 3600_000;
   const payload = Buffer.from(JSON.stringify({ s: subject, e: Date.now() + maxAgeMs })).toString('base64url');
   const sig = crypto.createHmac('sha256', await sessionSecret()).update(payload).digest('base64url');
   return { token: `${payload}.${sig}`, maxAgeMs };

@@ -5,7 +5,8 @@ import path from 'node:path';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
-import { getFileType, hashFile, storeFile } from './mediaStorage';
+import { getFileType, hashFile, resolveStoragePath, storedFileExists, storeFile } from './mediaStorage';
+import { enqueueCloudUpload } from './cloudSync';
 import { processNewMedia } from './processingService';
 import { ensureBuiltinScreens, findScreenByKey } from './screenService';
 
@@ -61,6 +62,27 @@ export async function seedDemoIfEmpty() {
   if (count > 0) return;
 
   logger.info('Empty database: creating demo events…');
+  await createDemoEvent(null);
+
+  const recruitment = await prisma.event.create({
+    data: {
+      name: 'ACM Recruitment 2026',
+      date: new Date('2026-10-05T00:00:00.000Z'),
+      venue: 'Seminar Hall B',
+      description: 'Orientation and recruitment drive for new chapter members.',
+      timerState: { create: {} },
+      displayState: { create: {} },
+    },
+  });
+  await ensureBuiltinScreens(recruitment.id);
+}
+
+/**
+ * The demo show — files, Show Flow, schedule, logo — as a new event owned by `ownerId`
+ * (null: nobody, for the first-run seed). Used for the first run and for every "Try the demo"
+ * visitor. Returns the event id.
+ */
+export async function createDemoEvent(ownerId: string | null): Promise<string> {
   const event = await prisma.event.create({
     data: {
       name: 'ACM Tech Fest 2026',
@@ -68,6 +90,7 @@ export async function seedDemoIfEmpty() {
       venue: 'Main Auditorium',
       description: 'Annual technical festival of the ACM student chapter — talks, workshops and demos.',
       waitingMessage: 'The session will begin shortly',
+      ownerId,
       timerState: { create: { durationMs: 10 * 60_000, remainingMs: 10 * 60_000, warningMs: 2 * 60_000 } },
       displayState: { create: { mode: 'screen' } },
       scheduleItems: { create: SCHEDULE },
@@ -104,8 +127,10 @@ export async function seedDemoIfEmpty() {
         },
       });
       mediaIds.set(file, media.id);
-      // Page counts now, PowerPoint conversion in the background.
-      await processNewMedia(media.id);
+      // The same presentation was converted before (another demo): reuse its slides instead
+      // of running LibreOffice again. Otherwise page counts now, conversion in the background.
+      if (!(await reuseConversion(media.id, hash, storagePath))) await processNewMedia(media.id);
+      enqueueCloudUpload(media.id);
     }
   } finally {
     await fsp.rm(tmpDir, { recursive: true, force: true });
@@ -146,17 +171,19 @@ export async function seedDemoIfEmpty() {
     });
   }
 
-  const recruitment = await prisma.event.create({
-    data: {
-      name: 'ACM Recruitment 2026',
-      date: new Date('2026-10-05T00:00:00.000Z'),
-      venue: 'Seminar Hall B',
-      description: 'Orientation and recruitment drive for new chapter members.',
-      timerState: { create: {} },
-      displayState: { create: {} },
-    },
-  });
-  await ensureBuiltinScreens(recruitment.id);
-
   logger.info(`Demo event "${event.name}" created with ${mediaIds.size} media files.`);
+  return event.id;
+}
+
+/** Copies the slides of an already-converted identical presentation. True when it did. */
+async function reuseConversion(mediaId: string, hash: string, storagePath: string): Promise<boolean> {
+  const done = await prisma.media.findFirst({
+    where: { hash, kind: 'presentation', conversionStatus: 'ready', renderPath: { not: null }, id: { not: mediaId } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!done?.renderPath || !storedFileExists(done.renderPath)) return false;
+  const renderPath = `${storagePath}.slides.pdf`;
+  await fsp.copyFile(resolveStoragePath(done.renderPath), resolveStoragePath(renderPath));
+  await prisma.media.update({ where: { id: mediaId }, data: { renderPath, pageCount: done.pageCount, conversionStatus: 'ready' } });
+  return true;
 }

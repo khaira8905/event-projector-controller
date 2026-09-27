@@ -1,6 +1,6 @@
 import * as googleCtl from '../controllers/googleController';
 import * as integrations from '../integrations';
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import multer from 'multer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -17,6 +17,7 @@ import * as screens from '../controllers/screensController';
 import * as status from '../controllers/statusController';
 import * as account from '../controllers/accountController';
 import { requireAuth } from '../middleware/requireAuth';
+import { assertNotDemo, checkDemoUpload } from '../services/demoAccounts';
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -41,6 +42,16 @@ const upload = multer({
   },
 });
 
+const demoUploadBudget: RequestHandler = (req, _res, next) => {
+  checkDemoUpload(Number(req.headers['content-length'] ?? 0)).then(() => next(), next);
+};
+const notInDemo =
+  (what: string): RequestHandler =>
+  (_req, _res, next) => {
+    assertNotDemo(what);
+    next();
+  };
+
 export const apiRouter = Router();
 
 apiRouter.use(requireAuth);
@@ -53,16 +64,18 @@ apiRouter.get('/auth/status', auth.status);
 apiRouter.post('/auth/setup', auth.setup);
 apiRouter.post('/auth/login', auth.login);
 apiRouter.post('/auth/logout', auth.logout);
+apiRouter.post('/auth/demo', auth.startDemo);
 apiRouter.post('/auth/change-password', auth.changePassword);
 // Google: one callback for both "connect Drive" and "sign in with Google" (public, verified by signed state).
 apiRouter.get('/auth/google/start', googleCtl.signInStart);
 apiRouter.get('/auth/google/callback', googleCtl.callback);
 apiRouter.get('/integrations', integrations.listServices);
 apiRouter.get('/integrations/google', googleCtl.getStatus);
-apiRouter.get('/integrations/google/connect', googleCtl.connect);
+// Guests of the demo can't connect outside accounts (the rest of Google stays readable: "not connected").
+apiRouter.get('/integrations/google/connect', notInDemo('Connecting Google Drive'), googleCtl.connect);
 apiRouter.post('/integrations/google/disconnect', googleCtl.disconnect);
 apiRouter.get('/integrations/google/drive', googleCtl.listDrive);
-apiRouter.post('/events/:id/media/drive', googleCtl.importFromDrive);
+apiRouter.post('/events/:id/media/drive', notInDemo('Importing from Google Drive'), googleCtl.importFromDrive);
 
 apiRouter.get('/account', account.get);
 apiRouter.put('/account/preferences', account.savePreferences);
@@ -76,7 +89,7 @@ apiRouter.put('/events/:id', events.updateEvent);
 apiRouter.delete('/events/:id', events.deleteEvent);
 
 apiRouter.get('/events/:id/media', media.listMedia);
-apiRouter.post('/events/:id/media', upload.array('files', config.maxFilesPerUpload), media.uploadMedia);
+apiRouter.post('/events/:id/media', demoUploadBudget, upload.array('files', config.maxFilesPerUpload), media.uploadMedia);
 apiRouter.patch('/media/:mediaId', media.renameMedia);
 apiRouter.delete('/media/:mediaId', media.deleteMedia);
 apiRouter.get('/media/:mediaId/file', media.serveMediaFile);

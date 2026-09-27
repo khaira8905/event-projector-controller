@@ -101,9 +101,10 @@ function execSoffice(soffice: string, args: string[]): Promise<void> {
   });
 }
 
+/** Saves progress on a file. It may have been deleted meanwhile (with its event, or a demo that ended). */
 async function update(mediaId: string, eventId: string, data: Parameters<typeof prisma.media.update>[0]['data']) {
-  await prisma.media.update({ where: { id: mediaId }, data });
-  emitToOperators(eventId, 'media:changed', { eventId });
+  const { count } = await prisma.media.updateMany({ where: { id: mediaId }, data });
+  if (count) emitToOperators(eventId, 'media:changed', { eventId });
 }
 
 async function convertOne(mediaId: string) {
@@ -173,9 +174,9 @@ export async function processNewMedia(mediaId: string) {
   if (media.kind === 'pdf') {
     if (!(await ensureLocalCopy(media.storagePath))) return;
     const pageCount = await countPdfPages(resolveStoragePath(media.storagePath));
-    await prisma.media.update({ where: { id: mediaId }, data: { pageCount, conversionStatus: 'none' } });
+    await prisma.media.updateMany({ where: { id: mediaId }, data: { pageCount, conversionStatus: 'none' } });
   } else if (media.kind === 'presentation') {
-    await prisma.media.update({ where: { id: mediaId }, data: { conversionStatus: 'pending' } });
+    await prisma.media.updateMany({ where: { id: mediaId }, data: { conversionStatus: 'pending' } });
     enqueueConversion(mediaId);
   }
 }

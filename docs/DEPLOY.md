@@ -80,6 +80,12 @@ browser) means signing in again next time; reloading the page doesn't. *Settings
 sharing → Sign out* signs out every tab of that browser. However long the tab stays open, a
 sign-in ends after 24 hours (change it with `SESSION_HOURS` in Render).
 
+**Public demo.** The sign-in page also offers **Try the demo**, and
+`https://<your-site>/demo` opens one straight away: the link to put on LinkedIn or GitHub.
+Each visitor gets a temporary guest account with a private copy of the sample event. It can't
+see anyone else's events, has small limits (5 events, 25 files, 25 MB per upload, no Google
+Drive), and is deleted after 3 hours. Set `DEMO=off` in Render to turn it off.
+
 **Removing someone:** delete their user in Supabase → Authentication → Users. They can't sign
 in again, and if they're signed in right now they're signed out within about 2 minutes (the
 server checks with Supabase using `SUPABASE_SERVICE_ROLE_KEY`). Their events stay in the

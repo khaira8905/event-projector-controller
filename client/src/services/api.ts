@@ -48,6 +48,7 @@ export const api = {
   setupPassword: (password: string) => request<{ ok: true }>('/api/auth/setup', { method: 'POST', body: json({ password }) }),
   login: (password: string, email?: string) => request<{ ok: true }>('/api/auth/login', { method: 'POST', body: json({ password, email }) }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+  startDemo: () => request<{ ok: true; eventId: string }>('/api/auth/demo', { method: 'POST' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<{ ok: true }>('/api/auth/change-password', { method: 'POST', body: json({ currentPassword, newPassword }) }),
   status: () => request<SystemStatus>('/api/status'),

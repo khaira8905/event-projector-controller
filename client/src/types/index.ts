@@ -228,8 +228,10 @@ export interface AuthStatus {
   user: string | null;
   /** "Continue with Google" is available on the sign-in page. */
   google?: boolean;
-  /** The signed-in account (accounts mode). */
-  account?: { email: string; name: string; plan: string } | null;
+  /** The signed-in account (accounts mode). demoEndsAt: a "Try the demo" guest, deleted then. */
+  account?: { email: string; name: string; plan: string; demoEndsAt?: number } | null;
+  /** "Try the demo" is offered on the sign-in page (and at /demo). */
+  demo?: boolean;
 }
 
 export interface Account {

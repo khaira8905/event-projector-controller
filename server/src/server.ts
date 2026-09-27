@@ -7,6 +7,7 @@ import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { createSocketServer } from './socket';
 import { seedDemoIfEmpty } from './services/demoSeed';
+import { scheduleDemoCleanup } from './services/demoAccounts';
 import { restoreRunningTimers } from './services/timerService';
 import { tmpUploadDir } from './services/mediaStorage';
 import { resumeProcessing } from './services/processingService';
@@ -26,6 +27,7 @@ async function main() {
 
   if (config.seedDemo) await seedDemoIfEmpty();
   await restoreRunningTimers();
+  scheduleDemoCleanup();
   // Background work interrupted by a restart: PowerPoint conversions and cloud uploads.
   void resumeProcessing().catch((err) => logger.error('Resuming file processing failed:', err));
   void resumePendingUploads().catch((err) => logger.error('Resuming cloud uploads failed:', err));

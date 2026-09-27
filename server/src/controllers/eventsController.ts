@@ -2,16 +2,16 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { currentUser, ownedEvents } from '../services/accounts';
+import { checkDemoEventLimit } from '../services/demoAccounts';
 import { badRequest, notFound } from '../lib/errors';
 import { logger } from '../lib/logger';
 import { toEventDto } from '../lib/dto';
 import { eventDate, idParam, trimmed } from '../lib/validation';
-import { removeEventUploads } from '../services/mediaStorage';
+import { removeEvent } from '../services/eventRemoval';
 import * as display from '../services/displayService';
-import * as timer from '../services/timerService';
 import { emitToEvent } from '../socket/bus';
 import { OVERLAY_POSITIONS } from '../services/controlService';
-import { ensureBuiltinScreens, forgetScreens } from '../services/screenService';
+import { ensureBuiltinScreens } from '../services/screenService';
 import { mergePreferences, parsePreferences, preferencesPatchSchema } from '../services/preferences';
 
 const createSchema = z.object({
@@ -59,6 +59,7 @@ export async function getEvent(req: Request<{ id: string }>, res: Response) {
 
 export async function createEvent(req: Request, res: Response) {
   const body = createSchema.parse(req.body);
+  await checkDemoEventLimit();
   const event = await prisma.event.create({
     data: {
       ...body,
@@ -101,16 +102,7 @@ export async function updateEvent(req: Request<{ id: string }>, res: Response) {
 
 export async function deleteEvent(req: Request<{ id: string }>, res: Response) {
   const event = await findEventOr404(req.params.id);
-  await prisma.event.delete({ where: { id: event.id } });
-  timer.forget(event.id);
-  display.forget(event.id);
-  forgetScreens(event.id);
-  emitToEvent(event.id, 'event:deleted', { eventId: event.id });
-  try {
-    await removeEventUploads(event.id);
-  } catch (err) {
-    logger.warn('Could not remove uploads for deleted event', event.id, err);
-  }
+  await removeEvent(event.id);
   logger.info(`Deleted event "${event.name}" (${event.id})`);
   res.status(204).end();
 }
