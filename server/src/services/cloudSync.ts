@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { ownedEvents } from './accounts';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { emitToOperators } from '../socket/bus';
@@ -102,9 +103,10 @@ export async function resumePendingUploads() {
   if (pending.length) logger.info(`Queued ${pending.length} file(s) for cloud upload.`);
 }
 
+/** Backup state of the files the current user can see (their own events with accounts). */
 export async function cloudStatus() {
   const store = cloudStorage();
-  const counts = await prisma.media.groupBy({ by: ['cloudStatus'], _count: true });
+  const counts = await prisma.media.groupBy({ by: ['cloudStatus'], where: { event: ownedEvents() }, _count: true });
   const byStatus = Object.fromEntries(counts.map((c) => [c.cloudStatus, c._count]));
   if (!store) return { provider: 'local', ok: true, message: 'Files are stored on this computer only.', pending: 0, errors: 0 };
   if (!lastHealth || Date.now() - lastHealth.checkedAt > 15_000) {

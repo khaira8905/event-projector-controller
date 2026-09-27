@@ -525,7 +525,8 @@ export default function DashboardPage() {
                 <h1 className="truncate text-[18px] leading-tight font-semibold tracking-[-0.015em] text-white">{event?.name ?? 'Opening event…'}</h1>
                 <p className="truncate text-[13px] text-slate-500">{presenter ? 'Presenter mode' : view === 'control' ? 'Control' : NAV.find((n) => n.id === view)?.label}</p>
               </div>
-              <div className="flex flex-wrap items-center">
+              {/* On phones the status goes on its own row, so the event name keeps the full width. */}
+              <div className="flex flex-wrap items-center max-sm:order-last max-sm:w-full">
                 <TopStatus
                   tone={!joined || isLive ? 'ok' : 'bad'}
                   icon={<span className="ec-status-dot h-2.5 w-2.5 rounded-full" data-state={!joined ? 'connecting' : isLive ? 'ok' : 'bad'} />}
@@ -538,7 +539,17 @@ export default function DashboardPage() {
                     tone={!cloudEnabled ? 'neutral' : system.storage.ok ? 'ok' : 'bad'}
                     icon={uploadProgress !== null ? <Loader2 size={18} className="animate-spin" /> : system.storage.ok ? <Cloud size={18} /> : <CloudOff size={18} />}
                     title={uploadProgress !== null ? `Uploading ${Math.round(uploadProgress * 100)}%` : cloudEnabled ? (system.storage.ok ? 'Cloud backup on' : 'Cloud offline') : 'Files on this computer'}
-                    detail={cloudEnabled ? (system.storage.pending ? `${system.storage.pending} still uploading` : 'All files backed up') : 'Works without internet'}
+                    detail={
+                      !cloudEnabled
+                        ? 'Works without internet'
+                        : system.storage.pending
+                          ? `${system.storage.pending} still uploading`
+                          : system.storage.errors
+                            ? `${system.storage.errors} not backed up yet`
+                            : system.storage.ok
+                              ? 'All files backed up'
+                              : 'Files are safe here; backup resumes by itself'
+                    }
                     hint={system.storage.message}
                   />
                 )}

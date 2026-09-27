@@ -14,12 +14,13 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   const refs = useRef(new Map<T, HTMLButtonElement>());
-  const [box, setBox] = useState<{ x: number; w: number } | null>(null);
+  // Position and size of the selected tab: options can wrap onto a second row on narrow screens.
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   useLayoutEffect(() => {
     const measure = () => {
       const el = refs.current.get(value);
-      if (el) setBox({ x: el.offsetLeft, w: el.offsetWidth });
+      if (el) setBox({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
     };
     measure();
     // Fonts load late and panels resize: keep the highlight under the right tab.
@@ -31,7 +32,7 @@ export function Segmented<T extends string>({
 
   return (
     <div role="tablist" className={cn('relative flex gap-0.5', className)}>
-      {box && <span className="ec-seg-indicator" style={{ width: box.w, transform: `translateX(${box.x}px)` }} aria-hidden />}
+      {box && <span className="ec-seg-indicator" style={{ width: box.w, height: box.h, bottom: 'auto', transform: `translate(${box.x}px, ${box.y}px)` }} aria-hidden />}
       {options.map((o) => (
         <button
           key={o.value}
