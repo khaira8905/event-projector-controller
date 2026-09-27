@@ -71,7 +71,8 @@ describe('open access', () => {
     await alice.get(`/api/auth/google/callback?code=c&state=${encodeURIComponent(state)}`).expect(302);
 
     expect((await alice.get('/api/integrations/google')).body).toMatchObject({ connected: true, account: { email: 'alice@example.com' } });
-    expect((await alice.get('/api/integrations/google/drive')).status).toBe(200);
+    // A connection made with the older whole-Drive access still opens the picker.
+    expect((await alice.get('/api/integrations/google/picker')).body).toMatchObject({ accessToken: 'access-A' });
 
     // Connected services: Google listed with what it unlocks, connected for Alice only.
     const aliceServices = (await alice.get('/api/integrations')).body;
@@ -81,7 +82,7 @@ describe('open access', () => {
 
     // Someone else with the same link sees their own (empty) connection, not Alice's Drive.
     expect((await bob.get('/api/integrations/google')).body).toMatchObject({ connected: false, account: null });
-    const denied = await bob.get('/api/integrations/google/drive');
+    const denied = await bob.get('/api/integrations/google/picker');
     expect(denied.status).toBe(409);
     expect(denied.body.code).toBe('GOOGLE_RECONNECT');
 

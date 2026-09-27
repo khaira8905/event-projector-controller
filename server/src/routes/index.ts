@@ -88,7 +88,7 @@ apiRouter.get('/integrations/google', googleCtl.getStatus);
 // Guests of the demo can't connect outside accounts (the rest of Google stays readable: "not connected").
 apiRouter.get('/integrations/google/connect', notInDemo('Connecting Google Drive'), googleCtl.connect);
 apiRouter.post('/integrations/google/disconnect', googleCtl.disconnect);
-apiRouter.get('/integrations/google/drive', googleCtl.listDrive);
+apiRouter.get('/integrations/google/picker', notInDemo('Google Drive'), googleCtl.pickerSession);
 apiRouter.post('/events/:id/media/drive', notInDemo('Importing from Google Drive'), googleCtl.importFromDrive);
 
 apiRouter.get('/account', account.get);

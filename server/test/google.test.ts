@@ -45,7 +45,7 @@ beforeAll(async () => {
         access_token: 'access-1',
         expires_in: 3600,
         refresh_token: form.get('grant_type') === 'authorization_code' ? 'refresh-1' : undefined,
-        scope: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
+        scope: 'openid email profile https://www.googleapis.com/auth/drive.file',
       });
     }
     if (url.pathname === '/revoke') return json(200, {});
@@ -119,7 +119,9 @@ describe('Google integration', () => {
   it('connects an account with the authorization-code flow', async () => {
     const { location, state, cookie } = await begin('/api/integrations/google/connect?returnTo=/events/abc?view=settings');
     expect(location.origin + location.pathname).toBe(`${fakeUrl}/auth`);
-    expect(location.searchParams.get('scope')).toContain('drive.readonly');
+    // Only files the person picks (non-sensitive scope: no unverified-app warning).
+    expect(location.searchParams.get('scope')).toContain('drive.file');
+    expect(location.searchParams.get('scope')).not.toContain('drive.readonly');
     expect(location.searchParams.get('access_type')).toBe('offline');
     expect(location.searchParams.get('client_secret')).toBeNull();
 
@@ -146,10 +148,13 @@ describe('Google integration', () => {
     expect(cb.headers.location).toBe('/?google=cancelled&message=Google+access+was+not+granted.');
   });
 
-  it('browses Drive and imports a file into an event', async () => {
-    const list = await api.get('/api/integrations/google/drive');
-    expect(list.status).toBe(200);
-    expect(list.body.files.map((f: any) => f.kind)).toEqual(['folder', 'pdf']);
+  it('opens Google’s picker with a short-lived token, then imports the picked file', async () => {
+    const picker = await api.get('/api/integrations/google/picker');
+    expect(picker.status).toBe(200);
+    // The project number comes from the client ID; nothing secret goes to the browser.
+    expect(picker.body).toMatchObject({ accessToken: 'access-1', appId: 'client', apiKey: null });
+    expect(picker.body.expiresAt).toBeGreaterThan(Date.now());
+    expect(JSON.stringify(picker.body)).not.toMatch(/refresh-1|client-secret/);
 
     const event = (await api.post('/api/events').send({ name: 'Drive Event', date: '2026-10-01' })).body;
     const imported = await api.post(`/api/events/${event.id}/media/drive`).send({ fileIds: ['pdf-00000001'] });
@@ -169,7 +174,7 @@ describe('Google integration', () => {
     await prisma.setting.update({ where: { key: row.key }, data: { value: await encryptSecret(JSON.stringify({ ...account, expiresAt: 0 })) } });
 
     tokenMode = 'invalid_grant';
-    const res = await api.get('/api/integrations/google/drive');
+    const res = await api.get('/api/integrations/google/picker');
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('GOOGLE_RECONNECT');
     expect((await api.get('/api/integrations/google')).body.connected).toBe(false);

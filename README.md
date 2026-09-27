@@ -275,17 +275,19 @@ Every push to `main` redeploys automatically. Events and files survive restarts 
 
 Import presentations straight from Google Drive (Settings → File sources → Google Drive → **Connect**, or **Add → Presentations & files → Google Drive** in the Flow). It is optional and needs a free Google OAuth client, set up once:
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) → create a project → **APIs & Services → Library** → enable **Google Drive API**.
-2. **APIs & Services → OAuth consent screen**: choose *External*, fill in the app name and your email, and add yourself (and other operators) as **test users**.
+1. Open [Google Cloud Console](https://console.cloud.google.com/) → create a project → **APIs & Services → Library** → enable **Google Drive API** and **Google Picker API**.
+2. **APIs & Services → OAuth consent screen** (Google Auth Platform): *External*, app name and your email. Under **Data access**, the only Drive scope is `…/auth/drive.file`. Then **Audience → Publish app**: `drive.file` is a non-sensitive scope, so anyone can connect, with no test-user list, no "unverified app" warning and no user limit.
 3. **Credentials → Create credentials → OAuth client ID → Web application**. Under *Authorized redirect URIs* add every address the app is opened at + `/api/auth/google/callback`, e.g. `https://your-app.onrender.com/api/auth/google/callback` (and `http://localhost:5173/api/auth/google/callback` for development). A `trycloudflare.com` link changes every time, so for Drive use a hosted address.
-4. Put the client ID and secret in `.env` (or Render's environment settings) and restart:
+4. **Credentials → Create credentials → API key** (for Google's file picker). *Edit API key*: **Application restrictions → Websites** → `https://your-app.onrender.com/*`; **API restrictions → Restrict key → Google Picker API**. This key is meant for browsers: with those restrictions it only works on your site, only for the picker.
+5. Put the values in `.env` (or Render → Environment) and restart:
    ```
    GOOGLE_CLIENT_ID=…apps.googleusercontent.com
    GOOGLE_CLIENT_SECRET=…
+   GOOGLE_API_KEY=…
    ```
-5. Private mode only (`AUTH_PROVIDER=local`): `GOOGLE_ALLOWED_EMAILS=you@college.edu,colleague@college.edu` adds **Continue with Google** to the sign-in page for those accounts.
+6. Private mode only (`AUTH_PROVIDER=local`): `GOOGLE_ALLOWED_EMAILS=you@college.edu,colleague@college.edu` adds **Continue with Google** to the sign-in page for those accounts.
 
-How it works: the server does the OAuth exchange, so the client secret and the tokens never reach the browser; tokens are stored encrypted. EventControl asks for **read-only** Drive access. Imported files are copied onto this computer (they have to be, to turn PowerPoint into slides and keep the show running if the venue Wi-Fi drops); duplicates are recognised. Disconnecting revokes the access at Google. While the consent screen is in *testing*, Google may show an "unverified app" notice to test users — that is expected for a private tool.
+How it works: people pick files in **Google's own file picker**, and EventControl gets access to **only those files** (`drive.file`), never the rest of their Drive. The server does the OAuth exchange: the client secret and the long-lived refresh token never reach the browser (stored encrypted); the picker gets a short-lived access token limited to `drive.file`. Imported files are copied onto the server (to turn PowerPoint into slides and keep the show running if the venue Wi-Fi drops); duplicates are recognised. Disconnecting revokes the access at Google. Connections made before this change (read access to the whole Drive) keep working.
 
 ### Installing LibreOffice (PowerPoint slides)
 
@@ -372,7 +374,7 @@ All routes except sign-in, health and media file downloads require the operator 
 | GET | `/api/integrations` | Connected services for this browser (Google today; a registry built for more), with status and what each unlocks |
 | GET · POST | `/api/integrations/google` · `/disconnect` | Google connection status · disconnect and revoke |
 | GET | `/api/integrations/google/connect?returnTo=` | Start connecting Google Drive (redirects to Google) |
-| GET | `/api/integrations/google/drive?q=&folderId=&pageToken=` | Browse / search presentations and PDFs in Drive |
+| GET | `/api/integrations/google/picker` | Short-lived `drive.file` token, project number and browser key for Google's file picker |
 | POST | `/api/events/:id/media/drive` | Import Drive files (`{ fileIds: [...] }`) |
 | GET | `/api/auth/google/start` · `/callback` | Sign in with Google (allow-listed accounts) · OAuth callback |
 
@@ -384,7 +386,7 @@ All routes except sign-in, health and media file downloads require the operator 
 - **Local install (default on your own computer):** open, for a crew on a trusted network — anyone with the link uses the console, without accounts (by request). Per-browser data (a connected Google account) is tied to a random HttpOnly browser cookie, so visitors never see each other's Drive. Actions on the server machine's desktop ("Open in PowerPoint") are refused for any request that didn't come from that machine, including through a tunnel or proxy. Security headers, CORS only for a configured UI origin, and a production log of failed and slow requests.
 - **Private mode (optional):** scrypt-hashed operator password (or Supabase Auth, or Google for allow-listed accounts), HMAC-signed HttpOnly `SameSite=Strict` session cookie, rate-limited sign-in, and a password change signs out other sessions. Operator REST routes and socket control require a session; displays are read-only.
 - **Uploads:** extension allowlist and **magic-byte check** (a renamed `.exe` is rejected), sanitized filenames, random temp names, size limits and SHA-256 duplicate detection.
-- **Google:** server-side authorization-code flow with a signed `state` bound to a short-lived nonce cookie (CSRF-safe), same-origin return paths only, read-only Drive scope, AES-256-GCM encrypted tokens, revoke on disconnect.
+- **Google:** server-side authorization-code flow with a signed `state` bound to a short-lived nonce cookie (CSRF-safe), same-origin return paths only, `drive.file` scope (only files picked in Google's picker), AES-256-GCM encrypted tokens, revoke on disconnect.
 - **Paths:** every stored path is resolved and confined to `uploads/`, and clients only ever see `/api/media/:id/...` URLs.
 - **No arbitrary execution:** LibreOffice and "Open in PowerPoint" run fixed binaries with `execFile`/`spawn` (no shell) on files tracked in the database.
 - **Resilience:** the display keeps its last frame when disconnected, reconnects forever and restores state exactly. State is persisted (survives restarts), interrupted conversions and cloud uploads resume on start, and missing local files are restored from the cloud. Speaker notes are never sent to displays, and a test checks this.

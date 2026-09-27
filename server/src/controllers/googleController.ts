@@ -110,15 +110,10 @@ export async function disconnect(req: Request, res: Response) {
   res.json(await google.status(owner, signInEnabled()));
 }
 
-const listSchema = z.object({
-  q: z.string().max(100).optional(),
-  folderId: z.string().max(128).optional(),
-  pageToken: z.string().max(500).optional(),
-});
-
-export async function listDrive(req: Request, res: Response) {
-  const { q, folderId, pageToken } = listSchema.parse(req.query);
-  res.json(await google.listDrive(ownerOf(req, res), { query: q, folderId, pageToken }));
+/** What the browser needs to open Google's file picker (see google.pickerSession). */
+export async function pickerSession(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await google.pickerSession(ownerOf(req, res)));
 }
 
 const importSchema = z.object({ fileIds: z.array(z.string().min(1).max(128)).min(1).max(20), folder: z.string().optional() });

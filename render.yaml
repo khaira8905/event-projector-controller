@@ -24,6 +24,8 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: GOOGLE_API_KEY        # browser key for Google's file picker (restricted to your site + Picker API)
+        sync: false
       # The free instance has 512 MB: leave room for LibreOffice converting a PowerPoint.
       - key: NODE_OPTIONS
         value: --max-old-space-size=320

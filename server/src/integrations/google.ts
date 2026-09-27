@@ -23,7 +23,14 @@ import { prisma } from '../lib/prisma';
  * later (see services/integrations.ts).
  */
 
-export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+/**
+ * Drive access is "drive.file": EventControl only sees the files a person picks in Google's
+ * own file picker. It's a non-sensitive scope, so Google shows no "unverified app" warning and
+ * sets no limit on how many people can connect. Connections made earlier with read access to
+ * the whole Drive still work.
+ */
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const LEGACY_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 const PROFILE_SCOPES = ['openid', 'email', 'profile'];
 const accountKey = (owner: string) => (owner === 'installation' ? 'integration.google' : `integration.google:${owner}`);
 
@@ -89,7 +96,7 @@ export async function status(owner: string, signInEnabled: boolean) {
     configured: googleConfigured(),
     connected: !!account,
     account,
-    drive: !!account?.scopes.includes(DRIVE_SCOPE),
+    drive: !!account?.scopes.some((s) => s === DRIVE_SCOPE || s === LEGACY_DRIVE_SCOPE),
     signInEnabled,
   };
 }
@@ -190,16 +197,17 @@ export async function disconnect(owner: string) {
   }
 }
 
-/** A valid access token, refreshed when it is about to expire. */
-async function accessToken(owner: string): Promise<string> {
+/** A valid access token (good for at least `minValidMs`), refreshed when needed. */
+async function accessToken(owner: string, minValidMs = 60_000): Promise<{ token: string; expiresAt: number }> {
   if (!googleConfigured()) throw notConfiguredError();
   const account = await loadAccount(owner);
   if (!account) throw new GoogleReconnectError('Google Drive isn’t connected. Connect it in Settings → File sources.');
-  if (account.expiresAt - Date.now() > 60_000) return account.accessToken;
+  if (account.expiresAt - Date.now() > minValidMs) return { token: account.accessToken, expiresAt: account.expiresAt };
   try {
     const t = await tokenRequest({ refresh_token: account.refreshToken, grant_type: 'refresh_token' });
-    await saveAccount(owner, { ...account, accessToken: t.access_token, expiresAt: Date.now() + t.expires_in * 1000 });
-    return t.access_token;
+    const expiresAt = Date.now() + t.expires_in * 1000;
+    await saveAccount(owner, { ...account, accessToken: t.access_token, expiresAt });
+    return { token: t.access_token, expiresAt };
   } catch (err) {
     // Revoked, or the password changed: forget it so the UI shows "Connect" again.
     if (err instanceof GoogleReconnectError) await forgetAccount(owner);
@@ -208,7 +216,7 @@ async function accessToken(owner: string): Promise<string> {
 }
 
 async function driveFetch(owner: string, url: string): Promise<Response> {
-  const token = await accessToken(owner);
+  const { token } = await accessToken(owner);
   let res: Response;
   try {
     res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -231,54 +239,28 @@ const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.prese
 const PPT = 'application/vnd.ms-powerpoint';
 const PDF = 'application/pdf';
 const SLIDES = 'application/vnd.google-apps.presentation';
-const FOLDER = 'application/vnd.google-apps.folder';
 const IMPORTABLE = [PPTX, PPT, PDF, SLIDES];
 
-export interface DriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  kind: 'folder' | 'presentation' | 'slides' | 'pdf';
-  size: number | null;
-  modifiedTime: string | null;
-  thumbnailLink: string | null;
-  iconLink: string | null;
-}
-
-const kindOf = (mime: string): DriveFile['kind'] => (mime === FOLDER ? 'folder' : mime === SLIDES ? 'slides' : mime === PDF ? 'pdf' : 'presentation');
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
-/** Presentations (PowerPoint, Google Slides) and PDFs; browse by folder or search by name. */
-export async function listDrive(owner: string, opts: { query?: string; folderId?: string; pageToken?: string }) {
-  const types = IMPORTABLE.map((t) => `mimeType='${t}'`).join(' or ');
-  const clauses = ['trashed = false'];
-  if (opts.query?.trim()) {
-    clauses.push(`name contains '${esc(opts.query.trim().slice(0, 100))}'`, `(${types})`);
-  } else {
-    clauses.push(`'${esc(opts.folderId || 'root')}' in parents`, `(${types} or mimeType='${FOLDER}')`);
+/**
+ * What the browser needs to open Google's file picker for this person: a short-lived access
+ * token limited to drive.file (only files they pick), the Cloud project number (so picked
+ * files are shared with this app) and the optional browser API key. The client secret and the
+ * refresh token never leave the server.
+ */
+export async function pickerSession(owner: string) {
+  const account = await loadAccount(owner);
+  if (!account?.scopes.some((s) => s === DRIVE_SCOPE || s === LEGACY_DRIVE_SCOPE)) {
+    throw new GoogleReconnectError('Connect Google Drive first (Settings → File sources).');
   }
-  const params = new URLSearchParams({
-    q: clauses.join(' and '),
-    pageSize: '50',
-    orderBy: 'folder,modifiedTime desc',
-    fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink, iconLink)',
-    supportsAllDrives: 'true',
-    includeItemsFromAllDrives: 'true',
-    ...(opts.pageToken ? { pageToken: opts.pageToken } : {}),
-  });
-  const res = await driveFetch(owner, `${config.google.apiUrl}/drive/v3/files?${params}`);
-  const data = (await res.json()) as { nextPageToken?: string; files?: Array<Record<string, string | undefined>> };
-  const files: DriveFile[] = (data.files ?? []).map((f) => ({
-    id: f.id!,
-    name: f.name ?? 'Untitled',
-    mimeType: f.mimeType ?? '',
-    kind: kindOf(f.mimeType ?? ''),
-    size: f.size ? Number(f.size) : null,
-    modifiedTime: f.modifiedTime ?? null,
-    thumbnailLink: f.thumbnailLink ?? null,
-    iconLink: f.iconLink ?? null,
-  }));
-  return { files, nextPageToken: data.nextPageToken ?? null };
+  // Valid for the whole time the picker is likely to stay open.
+  const { token, expiresAt } = await accessToken(owner, 10 * 60_000);
+  return {
+    accessToken: token,
+    expiresAt,
+    // The project number is the start of the OAuth client ID ("123456789012-abc….apps…").
+    appId: config.google.appId || config.google.clientId.split('-')[0],
+    apiKey: config.google.apiKey || null,
+  };
 }
 
 /**

@@ -543,7 +543,7 @@ function FilesSection({ media, google, account, openAccess, uploadProgress, onUp
       </Block>
 
       {account?.plan !== 'demo' && (
-        <Block id="google-drive" title="Google Drive" note="Import PowerPoint, Google Slides and PDF files. Read-only: EventControl never changes your Drive.">
+        <Block id="google-drive" title="Google Drive" note="Import PowerPoint, Google Slides and PDF files. You pick them in Google’s own window: EventControl only opens those files, never the rest of your Drive, and never changes anything.">
           <div className="flex flex-wrap items-center gap-4 py-3">
             <span className="ec-source-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px]">
               <DriveIcon size={19} />
@@ -558,7 +558,7 @@ function FilesSection({ media, google, account, openAccess, uploadProgress, onUp
                   ? 'The server owner adds a Google OAuth client once (README → Google Drive).'
                   : state === 'connected'
                     ? 'Browse your Drive from Files, or from Add in the Flow.'
-                    : 'You’ll be sent to Google to allow read-only access, then brought back here.'}
+                    : 'You’ll choose a Google account on Google’s page, then come straight back here.'}
               </p>
             </div>
             {state === 'checking' ? (

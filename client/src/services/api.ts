@@ -1,4 +1,5 @@
-import type { Account, AuthStatus, Person, DriveFile, EventInput, GoogleStatus, PreferencesPatch, EventSummary, Media, QueueItem, ScheduleItem, Screen, ScreenStyle, SystemStatus, UploadResult } from '../types';
+import type { PickerSession } from '../lib/googlePicker';
+import type { Account, AuthStatus, Person, EventInput, GoogleStatus, PreferencesPatch, EventSummary, Media, QueueItem, ScheduleItem, Screen, ScreenStyle, SystemStatus, UploadResult } from '../types';
 
 export class ApiError extends Error {
   constructor(
@@ -88,10 +89,8 @@ export const api = {
   /** Full-page navigation: Google's consent screen, then back to `returnTo`. */
   googleConnectUrl: (returnTo: string) => apiUrl(`/api/integrations/google/connect?returnTo=${encodeURIComponent(returnTo)}`),
   googleSignInUrl: () => apiUrl('/api/auth/google/start'),
-  driveList: (opts: { q?: string; folderId?: string; pageToken?: string }) => {
-    const params = new URLSearchParams(Object.entries(opts).filter(([, v]) => !!v) as [string, string][]);
-    return request<{ files: DriveFile[]; nextPageToken: string | null }>(`/api/integrations/google/drive?${params}`);
-  },
+  /** A short-lived pass for Google's file picker (see lib/googlePicker). */
+  googlePicker: () => request<PickerSession>('/api/integrations/google/picker'),
   importFromDrive: (eventId: string, fileIds: string[], folder = '') =>
     request<UploadResult>(`/api/events/${eventId}/media/drive`, { method: 'POST', body: json({ fileIds, folder }) }),
   uploadMedia: (eventId: string, files: File[], onProgress?: (fraction: number) => void, folder = '') =>

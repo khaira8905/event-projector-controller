@@ -53,7 +53,7 @@ const providers: Provider[] = [
       return {
         id: 'google',
         name: 'Google',
-        description: 'Browse your Google Drive and import PowerPoint, Google Slides and PDF files. Read-only.',
+        description: 'Pick PowerPoint, Google Slides and PDF files in Google’s own window and import them. EventControl only opens the files you pick.',
         features: [{ id: 'drive', name: 'Google Drive', available: s.connected && s.drive }],
         configured: s.configured,
         connected: s.connected,

@@ -99,6 +99,10 @@ export const config = {
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+    // Google's file picker: a browser API key (restricted to your site and the Picker API) and,
+    // optionally, the Cloud project number (otherwise taken from the start of the client ID).
+    apiKey: process.env.GOOGLE_API_KEY ?? '',
+    appId: process.env.GOOGLE_APP_ID ?? '',
     // Leave empty to derive it from the address the app is opened at.
     redirectUri: process.env.GOOGLE_REDIRECT_URI ?? '',
     // Comma-separated Google accounts allowed to sign in as operator (empty = sign-in off).

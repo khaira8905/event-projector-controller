@@ -276,20 +276,9 @@ export interface GoogleStatus {
   configured: boolean;
   connected: boolean;
   account: GoogleAccount | null;
-  /** The connection includes read access to Drive. */
+  /** The connection can open the Drive files the person picks. */
   drive: boolean;
   signInEnabled: boolean;
-}
-
-export interface DriveFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  kind: 'folder' | 'presentation' | 'slides' | 'pdf';
-  size: number | null;
-  modifiedTime: string | null;
-  thumbnailLink: string | null;
-  iconLink: string | null;
 }
 
 export interface SystemStatus {
