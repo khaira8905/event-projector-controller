@@ -373,6 +373,18 @@ describe('accounts', () => {
     expect((await (await signIn('alice@example.com')).agent.get('/api/events')).status).toBe(200);
   });
 
+  it('finds the visitor behind Render’s three proxies, ignoring a made-up address', async () => {
+    const admin = await signIn('alice@example.com');
+    app.set('trust proxy', 3);
+    // The chain the live site showed: visitor, Cloudflare, Render's router (then a local proxy).
+    const chain = '122.162.99.238, 162.158.44.250, 10.25.19.29';
+    const seen = await admin.agent.get('/api/admin/ip-check').set('X-Forwarded-For', chain);
+    expect(seen.body.ip).toBe('122.162.99.238');
+    const spoofed = await admin.agent.get('/api/admin/ip-check').set('X-Forwarded-For', `6.6.6.6, ${chain}`);
+    expect(spoofed.body.ip).toBe('122.162.99.238');
+    app.set('trust proxy', false);
+  });
+
   it('answers the daily keep-alive without signing in, touching the database and Supabase', async () => {
     const res = await request(app).get('/api/keep-alive');
     expect(res.status).toBe(200);

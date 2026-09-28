@@ -26,6 +26,12 @@ services:
         sync: false
       - key: GOOGLE_API_KEY        # browser key for Google's file picker (restricted to your site + Picker API)
         sync: false
+      # Requests reach the app through three proxies on Render (Cloudflare, Render's router and a
+      # local one): trusting exactly three finds each visitor's real address for the per-visitor
+      # limits, and an address a visitor makes up in X-Forwarded-For is ignored. Check with
+      # /api/admin/ip-check: "ip" should be your own address.
+      - key: TRUST_PROXY
+        value: "3"
       # The free instance has 512 MB: leave room for LibreOffice converting a PowerPoint.
       - key: NODE_OPTIONS
         value: --max-old-space-size=320

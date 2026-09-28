@@ -98,7 +98,7 @@ export function DriveBrowser({
           }
         >
           {status.connected
-            ? 'Your Google account is connected, but not for Drive files yet. Connect again and allow access to the files you choose.'
+            ? 'Your Google account is connected, but Drive access wasn’t allowed. Connect again, and on Google’s page tick the box for Google Drive files (“…only the specific Google Drive files you use with this app”).'
             : 'You’ll choose a Google account and allow EventControl to open the files you pick. It never sees the rest of your Drive. You come straight back here afterwards.'}
         </Notice>
       ) : error ? (
