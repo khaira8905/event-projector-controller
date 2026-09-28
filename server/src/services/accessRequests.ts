@@ -155,8 +155,9 @@ export async function finishPasswordReset(email: string, code: string, password:
     throw new HttpError(400, 'That code isn’t right. Check the email and try again.');
   }
   await setLoginPassword(loginId, password);
-  await prisma.user.update({ where: { id: user.id }, data: { verifyCodeHash: null, verifyExpires: null, verifyAttempts: 0 } });
-  logger.info(`Password reset: ${user.email}`);
+  // A new password ends every existing sign-in (someone else may have had the old one).
+  await prisma.user.update({ where: { id: user.id }, data: { verifyCodeHash: null, verifyExpires: null, verifyAttempts: 0, sessionsValidAfter: new Date() } });
+  logger.info(`Password reset: ${user.email} (signed out everywhere)`);
 }
 
 // ---- Administrator -----------------------------------------------------------------

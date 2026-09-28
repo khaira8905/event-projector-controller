@@ -93,6 +93,7 @@ apiRouter.post('/events/:id/media/drive', notInDemo('Importing from Google Drive
 
 apiRouter.get('/account', account.get);
 apiRouter.put('/account/preferences', account.savePreferences);
+apiRouter.post('/account/sign-out-everywhere', auth.signOutEverywhere);
 
 apiRouter.get('/status', status.getStatus);
 

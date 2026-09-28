@@ -31,6 +31,8 @@ model User {
   verifyCodeHash String?
   verifyExpires  DateTime?
   verifyAttempts Int       @default(0)
+  // Sign-ins from before this moment no longer count (password reset, "Sign out everywhere").
+  sessionsValidAfter DateTime?
   createdAt   DateTime  @default(now())
   lastLoginAt DateTime?
 

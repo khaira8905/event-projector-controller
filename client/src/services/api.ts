@@ -49,6 +49,7 @@ export const api = {
   setupPassword: (password: string) => request<{ ok: true }>('/api/auth/setup', { method: 'POST', body: json({ password }) }),
   login: (password: string, email?: string) => request<{ ok: true }>('/api/auth/login', { method: 'POST', body: json({ password, email }) }),
   logout: () => request<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+  signOutEverywhere: () => request<{ ok: true }>('/api/account/sign-out-everywhere', { method: 'POST' }),
   startDemo: () => request<{ ok: true; eventId: string }>('/api/auth/demo', { method: 'POST' }),
   requestAccess: (input: { name: string; email: string; password: string }) =>
     request<{ verify: boolean }>('/api/auth/request-access', { method: 'POST', body: json(input) }),

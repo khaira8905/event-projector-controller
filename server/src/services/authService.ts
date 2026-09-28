@@ -130,11 +130,13 @@ export function validateNewPassword(password: string) {
 export interface Session {
   subject: string;
   expiresAt: number;
+  /** When this sign-in happened (older tokens: estimated from their expiry). */
+  issuedAt: number;
 }
 
 export async function createSessionToken(subject: string, hours = config.auth.sessionHours): Promise<{ token: string; maxAgeMs: number }> {
   const maxAgeMs = Math.min(hours, config.auth.sessionHours) * 3600_000;
-  const payload = Buffer.from(JSON.stringify({ s: subject, e: Date.now() + maxAgeMs })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ s: subject, e: Date.now() + maxAgeMs, i: Date.now() })).toString('base64url');
   const sig = crypto.createHmac('sha256', await sessionSecret()).update(payload).digest('base64url');
   return { token: `${payload}.${sig}`, maxAgeMs };
 }
@@ -149,7 +151,8 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (typeof data.e !== 'number' || data.e < Date.now()) return null;
-    return { subject: String(data.s), expiresAt: data.e };
+    const issuedAt = typeof data.i === 'number' ? data.i : data.e - config.auth.sessionHours * 3600_000;
+    return { subject: String(data.s), expiresAt: data.e, issuedAt };
   } catch {
     return null;
   }

@@ -79,7 +79,7 @@ export function createSocketServer(httpServer: HttpServer): Server {
         // as its owner. Someone else's event looks exactly like a missing one.
         if (role === 'operator' && authEnabled()) {
           const session = await verifySessionToken(parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE]);
-          const user = session ? await userFromSubject(session.subject) : null;
+          const user = session ? await userFromSubject(session.subject, session.issuedAt) : null;
           if (!user) throw new HttpError(401, 'Please sign in.');
           if (event.ownerId !== user.id) throw new HttpError(404, 'Event not found.');
         }
@@ -120,7 +120,7 @@ export function createSocketServer(httpServer: HttpServer): Server {
         // and the session hasn't expired before carrying out anything.
         if (authEnabled()) {
           const session = await verifySessionToken(parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE]);
-          if (!session || !(await userFromSubject(session.subject))) throw new HttpError(401, 'Please sign in.');
+          if (!session || !(await userFromSubject(session.subject, session.issuedAt))) throw new HttpError(401, 'Please sign in.');
         }
         const command = controlCommandSchema.parse(payload);
         const data = await execute(eventId, command);

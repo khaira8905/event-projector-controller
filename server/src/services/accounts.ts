@@ -79,10 +79,12 @@ async function claimLegacyEvents(user: User) {
  * The user behind a session. Subjects: "user:<id>" (accounts), "operator" (the single
  * local password), "google:<email>" (Sign in with Google in private mode).
  */
-export async function userFromSubject(subject: string): Promise<CurrentUser | null> {
+export async function userFromSubject(subject: string, issuedAt?: number): Promise<CurrentUser | null> {
   if (subject.startsWith('user:')) {
     const user = await prisma.user.findUnique({ where: { id: subject.slice(5) } });
     if (!user || user.status !== 'active' || !(await accountStillActive(user.authId))) return null;
+    // Signed in before a password reset or "Sign out everywhere": that sign-in is over.
+    if (issuedAt !== undefined && user.sessionsValidAfter && issuedAt < user.sessionsValidAfter.getTime()) return null;
     const current = toCurrent(user);
     // A demo is over when its time is up, even before the clean-up has deleted it.
     return current.demoEndsAt && current.demoEndsAt < Date.now() ? null : current;
@@ -136,6 +138,11 @@ async function accountStillActive(authId: string): Promise<boolean> {
   })();
   accountChecks.set(authId, { active: previous, at: known?.at ?? 0, pending });
   return pending;
+}
+
+/** Ends every sign-in of this account made before now (the caller may start a fresh one). */
+export async function endAllSessions(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { sessionsValidAfter: new Date() } });
 }
 
 // ---- Preferences that follow the account ----------------------------------------------

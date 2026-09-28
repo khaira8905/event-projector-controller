@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useToast } from '../ui/Toast';
 import { PeopleModal } from '../PeopleModal';
 
 /** Signed in with an account: "this computer" settings are saved to the account instead. */
@@ -656,6 +657,7 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
               Sign out
             </Button>
           </div>
+          {account.plan !== 'demo' && <SignOutEverywhereRow />}
           {account.admin && <PeopleRow waiting={account.pendingRequests ?? 0} awaitingCode={account.awaitingCode ?? 0} />}
         </Block>
       )}
@@ -697,6 +699,33 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
         )}
       </Block>
     </>
+  );
+}
+
+/** Ends this account's sign-ins on every other computer and phone; this one stays signed in. */
+function SignOutEverywhereRow() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Row label="Other devices" hint="Signed in somewhere you shouldn’t be, like a venue computer? This signs out everywhere except here.">
+      <Button
+        size="sm"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await api.signOutEverywhere();
+            toast.success('Signed out on every other device.');
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Couldn’t sign out the other devices.');
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Sign out everywhere else
+      </Button>
+    </Row>
   );
 }
 

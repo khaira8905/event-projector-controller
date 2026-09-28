@@ -15,7 +15,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   // Sign-in endpoints accept any method; file downloads are GET only.
   if (/^\/auth\//.test(req.path) || (req.method === 'GET' && PUBLIC.some((re) => re.test(req.path)))) return next();
   const session = await verifySessionToken(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
-  const user = session ? await userFromSubject(session.subject) : null;
+  const user = session ? await userFromSubject(session.subject, session.issuedAt) : null;
   if (!session || !user) {
     res.status(401).json({ error: 'Please sign in.', code: 'UNAUTHENTICATED' });
     return;

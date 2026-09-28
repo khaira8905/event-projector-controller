@@ -4,14 +4,15 @@ import { config, googleConfigured } from '../config';
 import { parseCookies } from '../lib/cookies';
 import * as auth from '../services/authService';
 import { cookieOptions } from '../lib/network';
-import { userFromSubject } from '../services/accounts';
+import { currentUser, endAllSessions, userFromSubject } from '../services/accounts';
+import { HttpError } from '../lib/errors';
 import * as demoAccounts from '../services/demoAccounts';
 import { demoEnabled } from '../services/demoAccounts';
 import * as access from '../services/accessRequests';
 import { emailEnabled } from '../services/email';
 
-async function accountSummary(subject: string) {
-  const u = await userFromSubject(subject);
+async function accountSummary(session: auth.Session) {
+  const u = await userFromSubject(session.subject, session.issuedAt);
   if (!u) return null;
   const admin = await access.isAdmin(u);
   return {
@@ -39,7 +40,7 @@ export async function status(req: Request, res: Response) {
   const session = await auth.verifySessionToken(parseCookies(req.headers.cookie)[auth.SESSION_COOKIE]);
   // Signed-in account (accounts mode): shown in the console and used for per-person settings.
   // No account behind a valid cookie means it was removed: that session is over.
-  const account = session ? await accountSummary(session.subject) : null;
+  const account = session ? await accountSummary(session) : null;
   if (session && !account) res.clearCookie(auth.SESSION_COOKIE, { path: '/' });
   res.json({
     provider: config.auth.provider,
@@ -94,5 +95,14 @@ export async function changePassword(req: Request, res: Response) {
   await auth.changePassword(currentPassword, newPassword);
   // Rotating the secret signed everyone out; keep this operator signed in.
   await startSession(req, res, 'operator');
+  res.json({ ok: true });
+}
+
+/** "Sign out everywhere": ends every other sign-in of this account; this browser stays in. */
+export async function signOutEverywhere(req: Request, res: Response) {
+  const user = currentUser();
+  if (!user || user.plan === 'demo') throw new HttpError(400, 'Only accounts can sign out everywhere.');
+  await endAllSessions(user.id);
+  await startSession(req, res, `user:${user.id}`);
   res.json({ ok: true });
 }

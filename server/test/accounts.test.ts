@@ -338,7 +338,12 @@ describe('accounts', () => {
     const wrong = code === '123456' ? '654321' : '123456';
     expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code: wrong, password: 'bob-new-pass' })).status).toBe(400);
     expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'short' })).status).toBe(400);
+    const bobElsewhere = await signIn('bob@example.com');
+    expect((await bobElsewhere.agent.get('/api/events')).status).toBe(200);
+    vi.setSystemTime(Date.now() + 1000); // the test clock is frozen; real time moves on
     expect((await request(app).post('/api/auth/forgot-password/reset').send({ email: 'bob@example.com', code, password: 'bob-new-pass' })).status).toBe(200);
+    // The new password signs Bob out everywhere he was signed in.
+    expect((await bobElsewhere.agent.get('/api/events')).status).toBe(401);
     expect((await signIn('bob@example.com', 'bob-pass-1')).res.status).toBe(401);
     expect((await signIn('bob@example.com', 'bob-new-pass')).res.status).toBe(200);
     // A used code doesn't work twice.
@@ -354,6 +359,18 @@ describe('accounts', () => {
     expect(mailbox.filter((m) => m.to === 'bob@example.com').length - sentBefore).toBe(4);
     app.set('trust proxy', false);
     config.email.brevoApiKey = '';
+  });
+
+  it('signs an account out everywhere else, keeping this browser signed in', async () => {
+    const laptop = await signIn('alice@example.com');
+    const phone = await signIn('alice@example.com');
+    vi.setSystemTime(Date.now() + 1000);
+    expect((await laptop.agent.post('/api/account/sign-out-everywhere')).status).toBe(200);
+    expect((await laptop.agent.get('/api/events')).status).toBe(200);
+    expect((await phone.agent.get('/api/events')).status).toBe(401);
+    expect((await phone.agent.get('/api/auth/status')).body.authenticated).toBe(false);
+    // Signing in again afterwards works as usual.
+    expect((await (await signIn('alice@example.com')).agent.get('/api/events')).status).toBe(200);
   });
 
   it('answers the daily keep-alive without signing in, touching the database and Supabase', async () => {
