@@ -113,7 +113,7 @@ export function authorizationUrl(opts: { purpose: OAuthPurpose; state: string; r
     response_type: 'code',
     scope: scopes.join(' '),
     state: opts.state,
-    include_granted_scopes: 'true',
+    include_granted_scopes: 'false',
     // A refresh token is only needed to keep reading Drive later.
     ...(opts.purpose === 'connect' ? { access_type: 'offline', prompt: 'consent' } : { prompt: 'select_account' }),
     ...(opts.loginHint ? { login_hint: opts.loginHint } : {}),
