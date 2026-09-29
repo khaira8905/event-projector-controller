@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useAuth } from '../AuthGate';
 import { useToast } from '../ui/Toast';
 import { PeopleModal } from '../PeopleModal';
 
@@ -59,7 +60,7 @@ interface SettingsViewProps {
   /** No password: anyone with the link can open the console. */
   openAccess: boolean;
   /** The signed-in account (accounts mode). */
-  account: { email: string; name: string; plan: string; admin?: boolean; pendingRequests?: number; awaitingCode?: number } | null;
+  account: { email: string; name: string; plan: string; admin?: boolean; pendingRequests?: number; awaitingCode?: number; showcaseEventId?: string | null } | null;
   signedIn: boolean;
   displayUrl: string;
   consoleUrl: string;
@@ -661,6 +662,7 @@ function EventSection({ event, openAccess, account, signedIn, consoleUrl, displa
           {account.admin && <PeopleRow waiting={account.pendingRequests ?? 0} awaitingCode={account.awaitingCode ?? 0} />}
         </Block>
       )}
+      {account?.admin && event && <ShowcaseBlock eventId={event.id} eventName={event.name} active={account.showcaseEventId === event.id} />}
       <Block id="details" title="Details" scope="event">
         <Row label={event?.name ?? 'Event'} hint={[event?.venue, event?.date].filter(Boolean).join(' · ') || 'No date or venue yet.'}>
           <Button size="sm" icon={<Pencil size={13} />} onClick={onEditEvent}>
@@ -726,6 +728,47 @@ function SignOutEverywhereRow() {
         Sign out everywhere else
       </Button>
     </Row>
+  );
+}
+
+/**
+ * Administrator only: use this event for the public demo. Every visitor of /demo then gets
+ * their own copy of it (files, Flow, scripts, screens, branding) instead of the sample.
+ */
+function ShowcaseBlock({ eventId, eventName, active }: { eventId: string; eventName: string; active: boolean }) {
+  const toast = useToast();
+  const { refresh } = useAuth();
+  const [on, setOn] = useState(active);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setOn(active), [active]);
+  return (
+    <Block
+      id="demo"
+      title="Public demo"
+      note="Visitors of the demo link each get a private copy of the showcase event. They can change their copy, never yours, and it’s deleted after the demo ends."
+    >
+      <Row label="Use this event as the demo" hint={on ? `Demo visitors get a copy of “${eventName}”.` : 'Off: visitors get the built-in sample event.'}>
+        <Toggle
+          label="Use this event as the demo"
+          checked={on}
+          disabled={busy}
+          onChange={async (v) => {
+            setOn(v);
+            setBusy(true);
+            try {
+              await api.setShowcase(v ? eventId : null);
+              await refresh();
+              toast.success(v ? `The demo now shows “${eventName}”.` : 'The demo shows the sample event again.');
+            } catch (err) {
+              setOn(!v);
+              toast.error(err instanceof Error ? err.message : 'Couldn’t change the demo event.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </Row>
+    </Block>
   );
 }
 

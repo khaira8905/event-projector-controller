@@ -58,6 +58,7 @@ export const api = {
   forgotPassword: (email: string) => request<{ ok: true }>('/api/auth/forgot-password', { method: 'POST', body: json({ email }) }),
   resetPassword: (email: string, code: string, password: string) =>
     request<{ ok: true }>('/api/auth/forgot-password/reset', { method: 'POST', body: json({ email, code, password }) }),
+  setShowcase: (eventId: string | null) => request<{ ok: true }>('/api/admin/showcase', { method: 'PUT', body: json({ eventId }) }),
   listPeople: () => request<Person[]>('/api/admin/people'),
   approvePerson: (id: string) => request<{ ok: true }>(`/api/admin/people/${id}/approve`, { method: 'POST' }),
   removePerson: (id: string) => request<void>(`/api/admin/people/${id}`, { method: 'DELETE' }),

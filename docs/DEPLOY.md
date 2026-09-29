@@ -86,6 +86,9 @@ Each visitor gets a temporary guest account with a private copy of the sample ev
 **10 minutes** (`DEMO_MINUTES`). It can't see anyone else's events, has small limits (5 events,
 25 files, 25 MB per upload, no Google Drive), and is deleted when time is up. When it ends, the
 sign-in page offers **Request access**. Set `DEMO=off` in Render to turn the demo off.
+To show one of **your** events instead of the sample: open it → Settings → Account & sharing →
+**Public demo** → *Use this event as the demo*. Each visitor gets a private copy (files, Flow,
+scripts, screens, branding); yours is never changed.
 
 **Request access.** People can ask for an account on the sign-in page: name, email and a
 password they choose (it goes straight to Supabase, and nobody can see it, you included). With
