@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { currentUser } from '../services/accounts';
 import * as access from '../services/accessRequests';
+import { setShowcaseEventId } from '../services/demoAccounts';
 
 const requestSchema = z.object({
   name: z.string().trim().min(1, 'Please enter your name.').max(80),
@@ -85,4 +86,15 @@ export async function ipCheck(req: Request, res: Response) {
     trueClientIp: req.get('true-client-ip') ?? null,
     remoteAddress: req.socket.remoteAddress ?? null,
   });
+}
+
+const showcaseSchema = z.object({ eventId: z.string().min(1).max(64).nullable() });
+
+/** Administrator only: which of their events every demo visitor gets a copy of (null = the sample). */
+export async function setShowcase(req: Request, res: Response) {
+  const me = currentUser();
+  await access.assertAdmin(me);
+  const { eventId } = showcaseSchema.parse(req.body);
+  await setShowcaseEventId(eventId, me!.id);
+  res.json({ ok: true, eventId });
 }

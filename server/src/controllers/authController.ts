@@ -21,7 +21,15 @@ async function accountSummary(session: auth.Session) {
     plan: u.plan,
     ...(u.demoEndsAt ? { demoEndsAt: u.demoEndsAt } : {}),
     // The administrator approves people who ask for access (Settings → Account & sharing).
-    ...(admin ? await access.pendingCounts().then((c) => ({ admin: true, pendingRequests: c.ready, awaitingCode: c.awaitingCode })) : {}),
+    ...(admin
+      ? await access.pendingCounts().then(async (c) => ({
+          admin: true,
+          pendingRequests: c.ready,
+          awaitingCode: c.awaitingCode,
+          // The event demo visitors get a copy of (Settings → Account & sharing).
+          showcaseEventId: await demoAccounts.getShowcaseEventId(),
+        }))
+      : {}),
   };
 }
 

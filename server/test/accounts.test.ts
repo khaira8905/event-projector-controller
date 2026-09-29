@@ -385,6 +385,31 @@ describe('accounts', () => {
     app.set('trust proxy', false);
   });
 
+  it('gives demo visitors a copy of the administrator’s showcase event', async () => {
+    vi.setSystemTime(Date.now() + 61 * 60_000); // a fresh hour for the demo limit
+    const admin = await signIn('alice@example.com');
+    const other = await signIn('bob@example.com', USERS['bob@example.com'].password);
+    // Only the administrator, and only with their own events.
+    expect((await other.agent.put('/api/admin/showcase').send({ eventId: aliceEvent })).status).toBe(403);
+    expect((await admin.agent.put('/api/admin/showcase').send({ eventId: 'not-an-event' })).status).toBe(404);
+    expect((await admin.agent.put('/api/admin/showcase').send({ eventId: aliceEvent })).status).toBe(200);
+    expect((await admin.agent.get('/api/auth/status')).body.account.showcaseEventId).toBe(aliceEvent);
+
+    const visitor = request.agent(app);
+    const demo = (await visitor.post('/api/auth/demo')).body.eventId;
+    expect(demo).not.toBe(aliceEvent);
+    expect((await visitor.get(`/api/events/${demo}`)).body.name).toBe('Alice Show');
+    expect((await visitor.get(`/api/events/${demo}/queue`)).body[0].script).toBe('Good evening everyone…');
+    // Changing the copy never touches the original.
+    await visitor.put(`/api/events/${demo}`).send({ name: 'Visitor was here' });
+    expect((await admin.agent.get(`/api/events/${aliceEvent}`)).body.name).toBe('Alice Show');
+
+    // Back to the built-in sample.
+    expect((await admin.agent.put('/api/admin/showcase').send({ eventId: null })).status).toBe(200);
+    const sample = (await request.agent(app).post('/api/auth/demo')).body.eventId;
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: sample } })).name).toBe('ACM Tech Fest 2026');
+  });
+
   it('answers the daily keep-alive without signing in, touching the database and Supabase', async () => {
     const res = await request(app).get('/api/keep-alive');
     expect(res.status).toBe(200);

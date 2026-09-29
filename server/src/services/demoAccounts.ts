@@ -6,6 +6,7 @@ import { allow } from '../lib/rateLimit';
 import { logger } from '../lib/logger';
 import { currentUser } from './accounts';
 import { createDemoEvent } from './demoSeed';
+import { copyEvent } from './eventCopy';
 import { removeEvent } from './eventRemoval';
 
 /**
@@ -35,13 +36,49 @@ export async function startDemo(ip: string): Promise<{ userId: string; eventId: 
     data: { authId: `demo:${id}`, email: `guest-${id}@demo.eventcontrol`, name: 'Demo guest', plan: DEMO_PLAN, createdAt: new Date(), lastLoginAt: new Date() },
   });
   try {
-    const eventId = await createDemoEvent(user.id);
+    const eventId = await demoEventFor(user.id);
     logger.info(`Demo started (${await prisma.user.count({ where: { plan: DEMO_PLAN } })} active).`);
     return { userId: user.id, eventId };
   } catch (err) {
     await removeDemo(user.id).catch(() => {});
     throw err;
   }
+}
+
+// ---- Showcase ----------------------------------------------------------------------
+
+/**
+ * The administrator can pick one of their own events as the showcase: every demo visitor
+ * then gets a private copy of it instead of the built-in sample. Stored as a setting.
+ */
+const SHOWCASE_KEY = 'demo.showcaseEventId';
+
+export async function getShowcaseEventId(): Promise<string | null> {
+  return (await prisma.setting.findUnique({ where: { key: SHOWCASE_KEY } }))?.value || null;
+}
+
+export async function setShowcaseEventId(eventId: string | null, ownerId: string) {
+  if (eventId === null) {
+    await prisma.setting.deleteMany({ where: { key: SHOWCASE_KEY } });
+    return;
+  }
+  const event = await prisma.event.findFirst({ where: { id: eventId, ownerId }, select: { id: true } });
+  if (!event) throw new HttpError(404, 'Event not found.');
+  await prisma.setting.upsert({ where: { key: SHOWCASE_KEY }, create: { key: SHOWCASE_KEY, value: eventId }, update: { value: eventId } });
+  logger.info('Demo showcase event changed.');
+}
+
+/** A copy of the showcase event, or the built-in sample if there's none (or it can't be copied). */
+async function demoEventFor(userId: string): Promise<string> {
+  const showcase = await getShowcaseEventId();
+  if (showcase && (await prisma.event.count({ where: { id: showcase } }))) {
+    try {
+      return await copyEvent(showcase, userId);
+    } catch (err) {
+      logger.warn('Couldn’t copy the showcase event for a demo; using the sample instead.', err);
+    }
+  }
+  return createDemoEvent(userId);
 }
 
 // ---- Budget ------------------------------------------------------------------------
