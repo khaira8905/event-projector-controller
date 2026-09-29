@@ -1,5 +1,8 @@
 # EventControl — Mission Control for Presentations
 
+[![Live demo](https://img.shields.io/badge/live%20demo-eventcontrol.onrender.com%2Fdemo-2563eb)](https://eventcontrol.onrender.com/demo)
+[![CI](https://github.com/khaira8905/event-projector-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/khaira8905/event-projector-controller/actions/workflows/ci.yml)
+
 A presentation control console for events, seminars, conferences and classrooms. One operator dashboard controls everything the projector shows: slides from **several independent PowerPoint/PDF files**, special screens (Please Wait, Technical Difficulty, Break, Thank You, custom announcements), logos, countdowns, images and videos. You don't need to open PowerPoint, Alt-Tab between windows or hunt for files.
 
 ```
@@ -8,6 +11,8 @@ UPLOAD → ORGANIZE → PREVIEW → QUEUE (Show Flow) → CONTROL → DISPLAY
 
 **▶ Live demo: https://eventcontrol.onrender.com/demo**. No sign-up needed. You get your own private copy of a sample event to try everything, including the projector window (*Open display*). It lasts 10 minutes; if you like it, **Request access** on the sign-in page. The free server sleeps when unused, so the first visit may take ~30–60 s to wake.
 
+**Tech stack:** React · TypeScript · Vite · Tailwind CSS · Node.js · Express · Socket.IO (real-time) · Prisma · PostgreSQL · Supabase (Auth, Storage) · Google Drive API (Picker) · Brevo · Docker · Render · GitHub Actions · Vitest · Playwright
+
 ![Operator console, White theme](docs/screenshots/console.png)
 
 <details><summary>Blue theme</summary>
@@ -15,6 +20,8 @@ UPLOAD → ORGANIZE → PREVIEW → QUEUE (Show Flow) → CONTROL → DISPLAY
 ![Operator console, Blue theme](docs/screenshots/console-blue.png)
 
 ![Settings → Display: logo and Black Screen with a live preview](docs/screenshots/settings.png)
+
+![Sign-in on the hosted version: accounts, Request access, Forgot password and the public demo](docs/screenshots/sign-in.png)
 
 </details>
 
