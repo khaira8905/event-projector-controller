@@ -127,7 +127,7 @@ export function SettingsView(props: SettingsViewProps) {
                 </button>
                 {active && (
                   <ul className="ec-settings-parts max-lg:hidden">
-                    {s.parts.map((p) => (
+                    {partsFor(s.id, s.parts, props).map((p) => (
                       <li key={p}>
                         <a href={`#set-${slug(p)}`} className="block py-1 pl-9 text-[13px] text-slate-400 transition-colors hover:text-white">
                           {p}
@@ -743,7 +743,7 @@ function ShowcaseBlock({ eventId, eventName, active }: { eventId: string; eventN
   useEffect(() => setOn(active), [active]);
   return (
     <Block
-      id="demo"
+      id="public-demo"
       title="Public demo"
       note="Visitors of the demo link each get a private copy of the showcase event. They can change their copy, never yours, and it’s deleted after the demo ends."
     >
@@ -784,6 +784,15 @@ function PeopleRow({ waiting, awaitingCode }: { waiting: number; awaitingCode: n
       <PeopleModal open={open} onClose={() => setOpen(false)} />
     </Row>
   );
+}
+
+/** The sub-links of a section: only the parts that are on the page for this person. */
+function partsFor(section: SettingsSection, parts: string[], { account, event }: SettingsViewProps): string[] {
+  if (section === 'event') {
+    return [...(account ? ['Account'] : []), ...(account?.admin && event ? ['Public demo'] : []), 'Details', 'Sharing'];
+  }
+  if (section === 'files' && account?.plan === 'demo') return parts.filter((p) => p !== 'Google Drive');
+  return parts;
 }
 
 // ── Building blocks ────────────────────────────────────────────────────────────
