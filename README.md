@@ -92,6 +92,35 @@ Shortcuts are ignored while typing, and holding a key never skips several slides
 
 ## Architecture
 
+EventControl runs two ways from the same code: **hosted** (the public site, below) and **local** (on a laptop at the venue, further down).
+
+**Hosted (eventcontrol.onrender.com):**
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    OP["Operator console<br/>React · /events/:id"]
+    DP["Projector display<br/>React · /display/:id"]
+    GP["Google file picker"]
+  end
+  subgraph Render["Render · Docker"]
+    S["EventControl server<br/>Express · Socket.IO · Prisma"]
+  end
+  OP <-->|"REST + Socket.IO<br/>signed in, own events only"| S
+  S -->|"Socket.IO, read-only"| DP
+  GP -.->|"ids of picked files"| OP
+  S --> PG[("Supabase Postgres<br/>events, accounts")]
+  S --> ST[("Supabase Storage<br/>files")]
+  S --> AU["Supabase Auth<br/>logins"]
+  S --> BR["Brevo<br/>email codes"]
+  S --> GD["Google Drive API<br/>picked files only"]
+  UP["UptimeRobot · GitHub Actions"] -.->|"keep awake"| S
+```
+
+Every request runs as the signed-in account (AsyncLocalStorage) and every event query is limited to that account's events, so people sharing the server never see each other's work. The public demo gives each visitor a temporary guest account with a private copy of a sample (or the administrator's showcase) event.
+
+**Local (a laptop at the venue):**
+
 ```
 ┌─────────────────────────┐   REST + Socket.IO    ┌────────────────────────────────────┐   HTTPS (optional)   ┌───────────────────┐
 │ Operator dashboard      │ ◀──────────────────▶ │ EventControl server (this laptop)  │ ───────────────────▶ │ Supabase Storage  │
@@ -118,7 +147,8 @@ event-control/
 │   ├── hooks/           useEventSocket (realtime state), useTimerRemaining, useKeyboardShortcuts, useSystemStatus
 │   └── lib/             pdf.js loader & thumbnails, flow helpers, formatting
 ├── server/src/
-│   ├── integrations/    google (OAuth, encrypted tokens, Drive browse/import)
+│   ├── integrations/    google (OAuth, encrypted tokens, file picker session, Drive import)
+│   ├── lib/             prisma, errors, logger, rateLimit (expiring per-visitor limits)
 │   ├── controllers/     events, media, queue (Show Flow), screens, schedule, control, auth, status
 │   ├── services/
 │   │   ├── displayService    what is on screen + Next/Previous across slides & files
@@ -128,6 +158,11 @@ event-control/
 │   │   ├── storage/          CloudStorage interface + Supabase implementation
 │   │   ├── cloudSync         background upload/retry, restore-from-cloud, delete
 │   │   ├── authService       password hashing, signed sessions, Supabase Auth
+│   │   ├── accounts          current user, per-account scoping, removed-account checks
+│   │   ├── accessRequests    Request access, email codes, approvals, forgot password
+│   │   ├── demoAccounts      public demo guests, limits, showcase, clean-up
+│   │   ├── eventCopy         complete independent copy of an event (demo showcase)
+│   │   ├── email · supabaseAdmin   Brevo emails · Supabase Auth admin API
 │   │   └── screenService     built-in special screens
 │   ├── socket/          rooms (operators / displays), join + control handlers
 │   └── scripts/         reset-password
@@ -148,6 +183,10 @@ event-control/
 | **One command dispatcher** | Socket.IO `control` events and `POST /api/events/:id/control` run the same typed commands, so a phone remote or Stream Deck can be added later without touching the core. |
 | **Sessions in an HttpOnly cookie** | They work transparently for REST, uploads and the Socket.IO handshake. Displays don't need to sign in, so the projector machine needs no password; only operator control is protected. |
 | **Motion in plain CSS, sized with container units** | The animations only change `transform` and `opacity`, so they stay smooth on a modest projector laptop, and they need no animation library. The operator's live preview is the same component as the projector, sized with container-query units, so it's an exact miniature, animations included. Fonts (Bricolage Grotesque, Instrument Serif, JetBrains Mono, Inter) are bundled, so screens look the same with no internet. |
+| **Accounts scoped on the server, not the client** | Each request runs as its account (AsyncLocalStorage) and every query filters by owner; someone else's event answers "not found" (404, not 403) so it doesn't even reveal it exists. Tests try every route as another account. |
+| **Public demo as throwaway guest accounts** | Visitors get a real, private copy instead of a shared playground nobody can trust: a stranger's upload can never appear for the next visitor. Small limits and automatic deletion keep it cheap on a free server. |
+| **Google Drive through Google's own picker (`drive.file`)** | People choose files in Google's window, so EventControl only ever gets those files, never the whole Drive. It's a non-sensitive scope: no "unverified app" warning or user cap. The refresh token stays encrypted on the server; the browser only gets a short-lived token for the picker. |
+| **Real visitor addresses behind proxies** | Render puts three proxies in front of the app; trusting exactly three (`TRUST_PROXY=3`) gives each visitor's own address for the rate limits, and a forged `X-Forwarded-For` is ignored. |
 | **Schema changes are additive** | Existing installs upgrade in place with `prisma db push` (run automatically by `npm run dev`); nothing is lost. |
 
 ---
