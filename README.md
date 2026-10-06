@@ -13,6 +13,8 @@ UPLOAD → ORGANIZE → PREVIEW → QUEUE (Show Flow) → CONTROL → DISPLAY
 
 **Tech stack:** React · TypeScript · Vite · Tailwind CSS · Node.js · Express · Socket.IO (real-time) · Prisma · PostgreSQL · Supabase (Auth, Storage) · Google Drive API (Picker) · Brevo · Docker · Render · GitHub Actions · Vitest · Playwright
 
+![EventControl in action: starting the show, stepping through slides, Black Screen and a Quick Selection screen](docs/screenshots/demo.gif)
+
 ![Operator console, White theme](docs/screenshots/console.png)
 
 <details><summary>Blue theme</summary>
