@@ -24,14 +24,18 @@ export async function getStatus(req: Request, res: Response) {
 
 /**
  * Daily keep-alive (see .github/workflows/keep-alive.yml). Supabase pauses a free project
- * after a week without activity; a database query plus a request to its API each day keeps it
- * active. Public, cheap and says nothing about the data.
+ * after a week of low activity, and a bare `SELECT 1` wasn't enough: the project was paused
+ * in October 2026 while that ran every day. So each ping now does real work: it writes the
+ * time of the ping to a table, reads a real table, and calls Supabase's Auth and Data APIs.
+ * Public, cheap and says nothing about the data.
  */
 export async function keepAlive(_req: Request, res: Response) {
   let database = false;
   let supabase: boolean | null = null;
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
+    const time = new Date().toISOString();
+    await prisma.setting.upsert({ where: { key: 'keepAlive.lastPing' }, create: { key: 'keepAlive.lastPing', value: time }, update: { value: time } });
+    await prisma.user.count();
     database = true;
   } catch (err) {
     logger.warn('Keep-alive: database query failed.', err);
@@ -40,7 +44,11 @@ export async function keepAlive(_req: Request, res: Response) {
   const key = anonKey || serviceKey;
   if (url && key) {
     try {
-      supabase = (await fetch(`${url}/auth/v1/health`, { headers: { apikey: key }, signal: AbortSignal.timeout(10_000) })).ok;
+      const call = (path: string) => fetch(`${url}${path}`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
+      const [auth, data] = await Promise.all([call('/auth/v1/health'), call('/rest/v1/')]);
+      // The Data API may be switched off for this project (EventControl doesn't need it): only Auth decides.
+      supabase = auth.ok;
+      if (!data.ok) logger.info(`Keep-alive: Supabase Data API answered ${data.status}.`);
     } catch {
       supabase = false;
     }

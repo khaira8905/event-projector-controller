@@ -27,6 +27,7 @@ const created = new Map<string, { id: string; email: string; password: string; n
 /** Emails "sent" through the fake Brevo. */
 const mailbox: { to: string; subject: string; text: string }[] = [];
 let supabaseDown = false;
+let restPings = 0;
 
 const app = createApp();
 let server: http.Server;
@@ -43,6 +44,10 @@ beforeAll(async () => {
       res.end(JSON.stringify(data));
     };
     if (req.url === '/auth/v1/health' && req.headers.apikey === 'anon-key') return json(200, { name: 'GoTrue' });
+    if (req.url === '/rest/v1/' && req.headers.apikey === 'anon-key') {
+      restPings++;
+      return json(200, { swagger: '2.0' });
+    }
     if (req.url === '/brevo' && req.headers['api-key'] === 'brevo-key') {
       const m = JSON.parse(body);
       mailbox.push({ to: m.to[0].email, subject: m.subject, text: m.textContent });
@@ -414,6 +419,10 @@ describe('accounts', () => {
     const res = await request(app).get('/api/keep-alive');
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, database: true, supabase: true });
+    // Real activity, so Supabase doesn't pause the project: a write and a call to its Data API.
+    const ping = await prisma.setting.findUniqueOrThrow({ where: { key: 'keepAlive.lastPing' } });
+    expect(Date.now() - Date.parse(ping.value)).toBeLessThan(10_000);
+    expect(restPings).toBeGreaterThan(0);
   });
 
   it('keeps the sign-in only for this browser session', async () => {
