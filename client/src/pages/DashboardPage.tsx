@@ -15,6 +15,7 @@ import { StagePane } from '../components/dashboard/StagePane';
 import { ControlDeck } from '../components/dashboard/ControlDeck';
 import { ScriptPane } from '../components/dashboard/ScriptPane';
 import { DEFAULT_QUICK, QuickSelection, QuickSelectionEditor } from '../components/dashboard/QuickSelection';
+import { LogoPicker } from '../components/dashboard/LogoPicker';
 import { TimerStrip } from '../components/dashboard/TimerStrip';
 import { FilePicker } from '../components/dashboard/FilePicker';
 import { DriveBrowser } from '../components/dashboard/DriveBrowser';
@@ -228,6 +229,20 @@ export default function DashboardPage() {
     void run({ type: 'overlay', visible: !event.overlay.visible });
   };
 
+  // Show Logo without a logo yet opens the logo window first, instead of a logo-less screen.
+  const [logoPicker, setLogoPicker] = useState<{ open: boolean; showAfter: boolean }>({ open: false, showAfter: false });
+  const eventLogo = event?.logoMediaId ? (media.find((m) => m.id === event.logoMediaId && !m.missing) ?? null) : null;
+  const showLogo = () => {
+    if (!eventLogo) return setLogoPicker({ open: true, showAfter: true });
+    void run({ type: 'logo' });
+  };
+  const uploadLogo = async (file: File) => {
+    const result = await upload([file], 'Branding');
+    const logoFile = result?.uploaded[0] ?? result?.duplicates[0];
+    if (logoFile) await setEventField({ logoMediaId: logoFile.id }, 'Logo updated.');
+  };
+  const setLogo = (id: string | null) => setEventField({ logoMediaId: id }, id ? 'Logo updated.' : 'Logo removed. The image is still in Files.');
+
   const triggerQuick = (item: QuickItem) => {
     switch (item.kind) {
       case 'screen':
@@ -237,7 +252,7 @@ export default function DashboardPage() {
       case 'black':
         return toggleBlack();
       case 'logo':
-        return void run({ type: 'logo' });
+        return showLogo();
       case 'current':
         return void run({ type: 'show-current' });
     }
@@ -411,7 +426,7 @@ export default function DashboardPage() {
     );
   }
 
-  const logo = event?.logoMediaId ? media.find((m) => m.id === event.logoMediaId && !m.missing) : undefined;
+  const logo = eventLogo ?? undefined;
   const presenter = ui.presenterMode;
   const script = ui.controlLayout === 'script';
   const pageCount = display?.mode === 'media' && display.media?.pdfUrl ? (display.media.pageCount ?? null) : null;
@@ -494,8 +509,10 @@ export default function DashboardPage() {
       display={display}
       disabled={!joined}
       keys={quickItems.map((_, i) => (i < 8 ? bindings[`quick${i + 1}` as ShortcutAction][0] : undefined))}
+      logo={eventLogo}
       onTrigger={triggerQuick}
       onEdit={() => setQuickEditorOpen(true)}
+      onEditLogo={() => setLogoPicker({ open: true, showAfter: false })}
     />
   );
   const timerEl = <TimerStrip timer={timer} send={(cmd) => void run(cmd)} onMore={() => setView('timers')} />;
@@ -663,7 +680,7 @@ export default function DashboardPage() {
                   onOpenDisplay={openDisplayWindow}
                   black={{ enabled: blackPrefs.enabled, confirm: prefs?.confirmBlack ?? true, active: blackOn, hint: bindings.black[0] }}
                   onBlack={toggleBlack}
-                  onLogo={() => void run(display?.mode === 'logo' ? { type: 'show-current' } : { type: 'logo' })}
+                  onLogo={() => (display?.mode === 'logo' ? void run({ type: 'show-current' }) : showLogo())}
                   overlay={{ available: !!event?.overlay.mediaId, visible: !!event?.overlay.visible, hint: bindings.overlay[0] }}
                   onOverlay={toggleOverlay}
                 >
@@ -828,12 +845,8 @@ export default function DashboardPage() {
                   onPreferences={savePreferences}
                   onCustomizeQuick={() => setQuickEditorOpen(true)}
                   onUpload={(files) => void upload(files)}
-                  onUploadLogo={async (file) => {
-                    const result = await upload([file], 'Branding');
-                    const logoFile = result?.uploaded[0] ?? result?.duplicates[0];
-                    if (logoFile) await setEventField({ logoMediaId: logoFile.id }, 'Logo updated.');
-                  }}
-                  onSetLogo={(id) => setEventField({ logoMediaId: id }, id ? 'Logo updated.' : 'Logo removed. The image is still in Files.')}
+                  onUploadLogo={uploadLogo}
+                  onSetLogo={setLogo}
                   onManageFiles={() => setView('files')}
                   onOverlay={() => setView('branding')}
                   onBrowseDrive={() => setDriveTarget('library')}
@@ -875,6 +888,16 @@ export default function DashboardPage() {
           }
         />
         <DriveBrowser open={driveTarget !== null} status={google} onClose={() => setDriveTarget(null)} onImport={importFromDrive} onStatusChange={refreshGoogle} />
+        <LogoPicker
+          open={logoPicker.open}
+          logo={eventLogo}
+          images={media.filter((m) => m.kind === 'image' && !m.missing)}
+          showAfter={logoPicker.showAfter}
+          onUpload={uploadLogo}
+          onSetLogo={setLogo}
+          onShow={() => void run({ type: 'logo' })}
+          onClose={() => setLogoPicker((p) => ({ ...p, open: false }))}
+        />
         <QuickSelectionEditor
           open={quickEditorOpen}
           preferences={prefs}

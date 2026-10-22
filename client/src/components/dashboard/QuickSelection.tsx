@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Coffee, ArrowDown, ArrowUp, FileText, Hourglass, Image as ImageIcon, MonitorOff, Pencil, Plus, RotateCcw, Star, Trash2, Undo2 } from 'lucide-react';
+import { AlertTriangle, Coffee, ArrowDown, ArrowUp, FileText, Hourglass, Image as ImageIcon, ImagePlus, MonitorOff, Pencil, Plus, RotateCcw, Star, Trash2, Undo2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { KeyHint } from './ControlDeck';
@@ -25,7 +25,7 @@ interface Resolved {
 }
 
 /** Turns stored items into buttons, looking up the screens and files they point at. */
-export function resolveQuickItems(items: QuickItem[], screens: Screen[], media: Media[], display: DisplaySnapshot | null): Resolved[] {
+export function resolveQuickItems(items: QuickItem[], screens: Screen[], media: Media[], display: DisplaySnapshot | null, logo?: Media | null): Resolved[] {
   return items.map((item) => {
     switch (item.kind) {
       case 'screen': {
@@ -56,7 +56,14 @@ export function resolveQuickItems(items: QuickItem[], screens: Screen[], media: 
       case 'black':
         return { item, tone: 'neutral', label: item.label || 'Black Screen', icon: <MonitorOff size={18} />, active: display?.mode === 'black' };
       case 'logo':
-        return { item, tone: item.tone ?? 'neutral', label: item.label || 'Show Logo', icon: <ImageIcon size={18} />, active: display?.mode === 'logo' };
+        return {
+          item,
+          tone: item.tone ?? 'neutral',
+          label: item.label || 'Show Logo',
+          // The logo itself, so it's clear what will go up; without one, the button offers to add it.
+          icon: logo ? <img src={logo.url} alt="" className="h-[18px] w-[18px] rounded-[3px] object-contain" /> : <ImageIcon size={18} />,
+          active: display?.mode === 'logo',
+        };
       case 'current':
         return { item, tone: item.tone ?? 'blue', label: item.label || 'Back to Flow', icon: <Undo2 size={18} />, active: false };
     }
@@ -71,15 +78,19 @@ interface QuickSelectionProps {
   disabled?: boolean;
   /** Keyboard shortcut per button position (Settings → Controls), for the hints. */
   keys?: (string | undefined)[];
+  /** The event logo, shown on the Show Logo button. */
+  logo?: Media | null;
   onTrigger: (item: QuickItem) => void;
   onEdit: () => void;
+  /** Upload or change the logo (the small key on Show Logo). */
+  onEditLogo?: () => void;
 }
 
 /** The presenter's own shortcuts: one click puts a screen, file or state on the projector. */
-export function QuickSelection({ preferences, screens, media, display, disabled, keys, onTrigger, onEdit }: QuickSelectionProps) {
+export function QuickSelection({ preferences, screens, media, display, disabled, keys, logo, onTrigger, onEdit, onEditLogo }: QuickSelectionProps) {
   const blackOff = preferences?.blackScreen?.enabled === false;
   const items = (preferences?.quickSelection ?? DEFAULT_QUICK).filter((q) => !(blackOff && q.kind === 'black'));
-  const resolved = useMemo(() => resolveQuickItems(items, screens, media, display), [items, screens, media, display]);
+  const resolved = useMemo(() => resolveQuickItems(items, screens, media, display, logo), [items, screens, media, display, logo]);
   const confirmBlack = preferences?.confirmBlack ?? true;
   const [armed, setArmed] = useState<string | null>(null);
   const disarm = useRef(0);
@@ -115,31 +126,46 @@ export function QuickSelection({ preferences, screens, media, display, disabled,
           {resolved.map((r, index) => {
             const isArmed = armed === r.item.id;
             const key = keys?.[index];
+            const editLogo = r.item.kind === 'logo' && !!onEditLogo;
             return (
-              <button
-                key={r.item.id}
-                onClick={() => press(r)}
-                disabled={disabled || !!r.missing}
-                title={r.missing ?? (key ? `${r.label} (${prettyCombo(key)})` : r.label)}
-                aria-pressed={r.active}
-                data-tone={isArmed ? 'red' : r.tone}
-                className={cn(
-                  'ec-quick-btn group relative flex h-12 min-w-0 items-center gap-2.5 px-3.5 text-left text-[14px] font-medium text-slate-200',
-                  isArmed && 'ec-armed',
-                )}
-              >
-                <span key={r.active ? 'on' : 'off'} className={cn('shrink-0', r.active && 'ec-pop')}>
-                  {r.icon}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{isArmed ? 'Click again for black' : r.label}</span>
-                {r.active ? (
-                  <span className="ec-fade-in shrink-0 text-[10px] font-semibold tracking-[0.08em] uppercase opacity-85">On screen</span>
-                ) : key ? (
-                  <span className="opacity-60 transition-opacity group-hover:opacity-100">
-                    <KeyHint combo={key} />
+              <div key={r.item.id} className="ec-quick-cell relative flex min-w-0">
+                <button
+                  onClick={() => press(r)}
+                  disabled={disabled || !!r.missing}
+                  title={r.missing ?? (key ? `${r.label} (${prettyCombo(key)})` : r.label)}
+                  aria-pressed={r.active}
+                  data-tone={isArmed ? 'red' : r.tone}
+                  className={cn(
+                    'ec-quick-btn group relative flex h-12 w-full min-w-0 items-center gap-2.5 px-3.5 text-left text-[14px] font-medium text-slate-200',
+                    isArmed && 'ec-armed',
+                    editLogo && 'pr-11',
+                  )}
+                >
+                  <span key={r.active ? 'on' : 'off'} className={cn('shrink-0', r.active && 'ec-pop')}>
+                    {r.icon}
                   </span>
-                ) : null}
-              </button>
+                  <span className="min-w-0 flex-1 truncate">{isArmed ? 'Click again for black' : r.label}</span>
+                  {r.active ? (
+                    <span className="ec-fade-in shrink-0 text-[10px] font-semibold tracking-[0.08em] uppercase opacity-85">On screen</span>
+                  ) : key ? (
+                    <span className="opacity-60 transition-opacity group-hover:opacity-100">
+                      <KeyHint combo={key} />
+                    </span>
+                  ) : null}
+                </button>
+                {editLogo && (
+                  <button
+                    type="button"
+                    onClick={onEditLogo}
+                    disabled={disabled}
+                    title={logo ? 'Change the logo' : 'Upload a logo'}
+                    aria-label={logo ? 'Change the logo' : 'Upload a logo'}
+                    className={cn('ec-quick-edit absolute top-1/2 right-1.5 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md', r.active ? 'text-white' : 'text-slate-300')}
+                  >
+                    {logo ? <Pencil size={14} /> : <ImagePlus size={15} />}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

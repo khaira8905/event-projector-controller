@@ -420,16 +420,22 @@ body {
   box-shadow: 0 1px 0 var(--btn-edge);
   overflow: hidden;
 }
-.ec-quick-btn {
-  cursor: pointer;
+.ec-quick-cell {
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+}
+.ec-quick-btn {
+  cursor: pointer;
   transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
-.ec-quickpad > .ec-quick-btn:nth-child(2n) { border-right: 0; }
+.ec-quickpad > .ec-quick-cell:nth-child(2n) { border-right: 0; }
 /* No bottom divider on the last row. */
-.ec-quickpad > .ec-quick-btn:nth-last-child(1),
-.ec-quickpad > .ec-quick-btn:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+.ec-quickpad > .ec-quick-cell:nth-last-child(1),
+.ec-quickpad > .ec-quick-cell:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+/* A small "change" key on top of a quick key (the logo's), quiet until hovered. */
+.ec-quick-edit { color: inherit; opacity: 0.55; }
+.ec-quick-edit:hover, .ec-quick-edit:focus-visible { opacity: 1; background: rgb(127 127 127 / 0.18); }
+.ec-quick-edit:focus-visible { outline: 2px solid var(--accent-500); outline-offset: -2px; }
 .ec-quick-btn::before {
   content: '';
   position: absolute;

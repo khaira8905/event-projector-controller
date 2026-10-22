@@ -10,7 +10,6 @@ import {
   ExternalLink,
   FolderOpen,
   HardDriveUpload,
-  ImagePlus,
   Keyboard,
   Link2,
   Loader2,
@@ -20,7 +19,6 @@ import {
   Paintbrush,
   Pencil,
   Presentation,
-  Trash2,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -32,6 +30,7 @@ import { DriveIcon } from '../DriveIcon';
 import { BlackScene } from '../display/BlackScene';
 import { ShortcutEditor } from './ShortcutEditor';
 import { resolveQuickItems } from './QuickSelection';
+import { LogoEditor } from './LogoPicker';
 import { ACCEPTED_FILE_TYPES, api } from '../../services/api';
 import { useShortcutBindings, useUiPrefs } from '../../lib/uiPrefs';
 import { cn } from '../../lib/cn';
@@ -283,8 +282,6 @@ function PresentationSection({ prefs, save, media, screens, onCustomizeQuick }: 
 
 function DisplaySection({ prefs, save, event, media, displayUrl, onUploadLogo, onSetLogo, onOverlay, onOpenDisplay, onFullscreen, onCopied }: SectionProps) {
   const { prefs: ui, set: setUi } = useUiPrefs();
-  const input = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
   const black = prefs?.blackScreen ?? DEFAULT_BLACK_SCREEN;
   const setBlack = (patch: Partial<BlackScreenPrefs>) => save({ blackScreen: patch });
   const images = media.filter((m) => m.kind === 'image' && !m.missing);
@@ -292,67 +289,10 @@ function DisplaySection({ prefs, save, event, media, displayUrl, onUploadLogo, o
   const [status, setStatus] = useState(black.statusText);
   useEffect(() => setStatus(black.statusText), [black.statusText]);
 
-  const pick = async (file: File | undefined) => {
-    if (!file) return;
-    setBusy(true);
-    try {
-      await onUploadLogo(file);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
       <Block id="logo" title="Logo" scope="event" note="Used on Black Screen (if you turn it on), the logo screen and the special screens.">
-        <div className="flex flex-wrap items-center gap-5 py-4">
-          <div className="ec-logo-well flex h-[108px] w-[192px] shrink-0 items-center justify-center overflow-hidden rounded-[6px] p-3">
-            {busy ? (
-              <Loader2 size={20} className="animate-spin text-[#fff]/50" />
-            ) : logo ? (
-              <img key={logo.id} src={logo.url} alt="" className="ec-fade-in max-h-full max-w-full object-contain" />
-            ) : (
-              <span className="text-center text-[12px] text-[#fff]/40">No logo yet</span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-200">{logo ? logo.name : 'Upload your logo'}</p>
-            <p className="mt-0.5 text-[13px] text-slate-500">PNG with a transparent background looks best. It is never stretched.</p>
-            <input
-              ref={input}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                void pick(file);
-              }}
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" variant={logo ? 'secondary' : 'primary'} icon={<ImagePlus size={14} />} onClick={() => input.current?.click()} disabled={busy}>
-                {logo ? 'Replace…' : 'Upload logo…'}
-              </Button>
-              {images.length > (logo ? 1 : 0) && (
-                <select value="" onChange={(e) => e.target.value && void onSetLogo(e.target.value)} className="ec-input h-8 w-full max-w-[13rem] min-w-0 px-2 text-[13px] max-sm:max-w-full" aria-label="Use an image from Files">
-                  <option value="">Use an image from Files…</option>
-                  {images
-                    .filter((m) => m.id !== logo?.id)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
-              )}
-              {logo && (
-                <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={() => void onSetLogo(null)} className="hover:!text-red-400">
-                  Remove
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
+        <LogoEditor logo={logo} images={images} onUpload={onUploadLogo} onSetLogo={onSetLogo} />
         <Row label="Logo overlay on slides" hint="A small logo in a corner, on top of the slides.">
           <Button size="sm" variant="ghost" icon={<ExternalLink size={13} />} onClick={onOverlay}>
             Open Branding
